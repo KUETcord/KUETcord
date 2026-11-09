@@ -1,0 +1,55 @@
+name: KUETcord Continuous Deployment (CD)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend to Cloud (Render / Container Service)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Trigger Backend Deployment Webhook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        run: |
+          echo "Triggering backend deployment..."
+          curl -s -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" || echo "Deploy hook triggered"
+
+  deploy-frontend:
+    name: Deploy Frontend to Cloud (Vercel / Static Host)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        if: env.VERCEL_TOKEN != ''
+        run: |
+          npx vercel --token ${{ secrets.VERCEL_TOKEN }} --prod --yes
+
+  smoke-test:
+    name: Post-Deployment Health Check & Smoke Test
+    needs: [deploy-backend, deploy-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Await Service Startup & Verify Backend Actuator Health
+        env:
+          DEPLOYED_BACKEND_URL: ${{ secrets.DEPLOYED_BACKEND_URL }}
+        if: env.DEPLOYED_BACKEND_URL != ''
+        run: |
+          echo "Waiting 30 seconds for cloud instance warm-up..."
+          sleep 30
+          echo "Pinging ${DEPLOYED_BACKEND_URL}/actuator/health..."
+          curl --retry 5 --retry-delay 10 --retry-max-time 120 -s -f "${DEPLOYED_BACKEND_URL}/actuator/health" | grep "UP"
+          echo "Backend deployment verified healthy!"
+

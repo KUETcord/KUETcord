@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kuetcord_postgres
+    restart: unless-stopped
+    command: postgres -c shared_buffers=256MB -c work_mem=16MB -c maintenance_work_mem=64MB -c effective_cache_size=768MB -c max_connections=100 -c checkpoint_completion_target=0.9
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kuetcord_db}
+      POSTGRES_USER: ${POSTGRES_USER:-kuetcord_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kuetcord_secure_pass}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - kuetcord_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kuetcord_admin} -d ${POSTGRES_DB:-kuetcord_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kuetcord_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kuetcord_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-kuetcord_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-kuetcord_admin}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-kuetcord_secure_pass}
+      JWT_SECRET: ${JWT_SECRET:-c2VjdXJlX2p3dF90ZXN0X3NlY3JldF9mb3JfZ2l0aHViX2FjdGlvbnNfMTIzNDU2Nzg5MA==}
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: 1025
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,https://kuetcord.onrender.com}
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kuetcord_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kuetcord_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    environment:
+      VITE_API_BASE_URL: http://backend:8080/api/v1
+      VITE_WS_BASE_URL: ws://backend:8080/ws
+    networks:
+      - kuetcord_network
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: kuetcord_mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025" # Web UI for viewing emails
+      - "1025:1025" # SMTP port
+    networks:
+      - kuetcord_network
+
+  # --- Observability Stack (CSE 3220 Bonus 10 Marks) ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: kuetcord_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - kuetcord_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: kuetcord_grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - kuetcord_grafana_data:/var/lib/grafana
+    networks:
+      - kuetcord_network
+
+volumes:
+  kuetcord_pgdata:
+  kuetcord_grafana_data:
+
+networks:
+  kuetcord_network:
+    driver: bridge
+
