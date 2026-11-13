@@ -41,14 +41,14 @@ flowchart LR
 
 ## 3. Sprint-by-Sprint Development Log
 
-| Sprint / Week | Dates | Key Completed Tasks | Commits / PRs |
+| Sprint / Phase | Actual / Planned Dates | Key Completed / Planned Tasks | Commits / PRs |
 |---|---|---|---|
-| **Week 1** | Nov 10 – Nov 16 | Repo setup, Docker Compose, Flyway `V1` migration, GitHub Actions CI, App shell | PR #1, PR #3 |
-| **Week 2** | Nov 17 – Nov 23 | Google OIDC validation, local registration, BCrypt, email verification, Token Bucket filter | PR #7, PR #9 |
-| **Week 3** | Nov 24 – Nov 30 | CT Hub backend, State Pattern transition logic, Outbox event generation, unit tests | PR #14, PR #16 |
-| **Week 4** | Dec 01 – Dec 07 | Frontend CT calendar, timeline cards, course search & filters, verification modal | PR #21, PR #24 |
-| **Week 5** | Dec 08 – Dec 14 | CI failure-and-fix artifact, k6 load testing on CT calendar query, multi-stage Docker build | PR #29, PR #31 |
-| **Week 6** | Dec 15 – Dec 21 | Cross-module integration, seed data script, demo rehearsal, viva prep | PR #35 |
+| **Phase 1 (Week 1)** | Nov 09, 2026 | Repo setup, Docker Compose, Flyway `V1`–`V3` baseline, GitHub Actions CI, App shell, Scrum & QA Excel Trackers | PR #1 |
+| **Phase 2 (Week 2)** | Nov 14, 2026 | Institutional `@KuetEmail` validator, BCrypt (`PasswordService`), SHA-256 verification tokens, Google OIDC (`GoogleAuthService`), JWT filter, Token Bucket (`RateLimitingFilter`), `AuthController`, `UserController` | PR #2 |
+| **Phase 3 (Week 3)** | Nov 15 – Nov 21, 2026 | CT Hub backend, State Pattern transition logic, `@Version` optimistic locking, Outbox event generation, unit & concurrency tests | Planned |
+| **Phase 4 (Week 4)** | Nov 22 – Nov 28, 2026 | Frontend CT calendar, timeline cards, course search & filters, verification modal, `break-ui` testing | Planned |
+| **Phase 5 (Week 5)** | Nov 29 – Dec 05, 2026 | CI failure-and-fix artifact, k6 load testing on CT calendar query, multi-stage Docker build, Prometheus/Grafana | Planned |
+| **Phase 6 (Week 6)** | Dec 06 – Dec 12, 2026 | Cross-module integration, seed data script, demo rehearsal, viva prep | Planned |
 
 ---
 
@@ -67,15 +67,18 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 
 | Testing Discipline | Test Suite | Target Class / Endpoint | Pass / Fail | Evidence Log |
 |---|---|---|---|---|
-| **Contract / Validation** | `AuthValidationTest` | `POST /api/v1/auth/register` (non-KUET email) | PASS | HTTP 400 with strict domain error message |
-| **Security & Pen-Test** | `GoogleOidcSecurityTest` | `GoogleAuthService` (tampered token) | PASS | Forged signature throws `BadCredentialsException` |
-| **Security / Rate-Limit** | `RateLimitFilterTest` | `RateLimitingFilter` | PASS | 11th burst request in 60s returns HTTP 429 |
-| **Unit Testing** | `CtStatePatternTest` | `CtState` transitions | PASS | Student blocked from verify; CR transitions to `VERIFIED` |
-| **Concurrency Testing** | `CtOptimisticLockTest` | `POST /api/v1/ct/events/{id}/reschedule` | PASS | Stale `@Version` triggers 409 Conflict |
-| **Integration Testing** | `OutboxEmitterIntegrationTest` | `CtService` | PASS | Atomically persists `CT_RESCHEDULED` in `outbox_events` |
-| **Performance & Load** | `k6_ct_read.js` | `GET /api/v1/ct/events` (50 VUs) | PASS | p95: 38ms, 0% errors across 10,000 requests |
-| **Adversarial UI (`break-ui`)** | `AppShellBreakUiTest` | `<AppShell />` & `<CtEventCard />` | PASS | 80-char title wraps cleanly; empty states render |
-| **CI/CD Smoke Testing** | `deploy.yml` Actuator Health | `GET /actuator/health` | PASS | Returns `{"status":"UP"}` with PostgreSQL UP |
+| **Contract / Validation** | `EmailDomainValidatorTest` | `@KuetEmail` & `EmailDomainValidator` | PASS | Accepts `@stud.kuet.ac.bd`; rejects gmail/yahoo/spoofed subdomains |
+| **Unit Testing** | `BCryptHashingUnitTest` | `PasswordService` | PASS | Verifies `$2a$12$` BCrypt hashes and random per-password salting |
+| **Security / Tokens** | `VerificationTokenServiceTest` | `VerificationTokenService` | PASS | Verifies SHA-256 hash at rest, 15m TTL, single-use rejection |
+| **Security / OIDC** | `GoogleAuthServiceTest` | `GoogleAuthService` | PASS | Forged signature throws `BadCredentialsException`; enforces `@stud.kuet.ac.bd` |
+| **Security / Rate-Limit** | `TokenBucketRateLimiterTest` & `AuthControllerSecurityTest` | `RateLimitingFilter` & `/api/v1/auth/**` | PASS | 11th burst login in 60s returns HTTP 429 + `Retry-After: 60` |
+| **Integration (DB)** | `AuthFlowIntegrationIT` | PostgreSQL 16 + Flyway + `/api/v1/auth/**` + `/api/v1/me` | PASS | Verified in CI (Run `43498480126`): Flyway schema, unverified 403 gate, token consume, JWT profile PATCH |
+| **Unit Testing** | `CtStatePatternTest` | `CtState` transitions | PLANNED | Phase 3 target: Student blocked from verify; CR transitions to `VERIFIED` |
+| **Concurrency Testing** | `CtOptimisticLockTest` | `POST /api/v1/ct/events/{id}/reschedule` | PLANNED | Phase 3 target: Stale `@Version` triggers 409 Conflict |
+| **Integration Testing** | `OutboxEmitterIntegrationTest` | `CtService` | PLANNED | Phase 3 target: Atomically persists `CT_RESCHEDULED` in `outbox_events` |
+| **Performance & Load** | `k6_ct_read.js` | `GET /api/v1/ct/events` (50 VUs) | PLANNED | Phase 5 target: p95 <= 150ms under 50 VUs |
+| **Adversarial UI (`break-ui`)** | `AppShellBreakUiTest` | `<AppShell />` & `<CtEventCard />` | PLANNED | Phase 4 target: 80-char title wraps cleanly; empty states render |
+| **CI/CD Smoke Testing** | `deploy.yml` Actuator Health | `GET /actuator/health` | PLANNED | Phase 5 target: Returns `{"status":"UP"}` with PostgreSQL UP |
 
 ---
 

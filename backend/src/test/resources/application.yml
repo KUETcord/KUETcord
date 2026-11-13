@@ -33,3 +33,6 @@ kuetcord:
     expiration-ms: 86400000
   cors:
     allowed-origins: http://localhost:5173
+  google:
+    client-id: test-google-client-id.apps.googleusercontent.com
+  frontend-url: http://localhost:5173
