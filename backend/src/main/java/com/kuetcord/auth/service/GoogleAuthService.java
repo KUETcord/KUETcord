@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
@@ -81,7 +82,7 @@ public class GoogleAuthService {
                             .username(accountProvisioner.deriveUniqueUsername(normalizedEmail))
                             .emailVerifiedAt(Instant.now())
                             .status(UserStatus.ACTIVE)
-                            .roles(Set.of(studentRole))
+                            .roles(new HashSet<>(Set.of(studentRole)))
                             .build();
                     return userRepository.save(newUser);
                 });

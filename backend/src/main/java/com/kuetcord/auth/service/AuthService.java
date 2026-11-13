@@ -21,6 +21,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
@@ -58,7 +59,7 @@ public class AuthService {
                 .department(trimNullable(request.department()))
                 .batch(trimNullable(request.batch()))
                 .status(UserStatus.ACTIVE)
-                .roles(Set.of(studentRole))
+                .roles(new HashSet<>(Set.of(studentRole)))
                 .build();
 
         User saved = userRepository.save(newUser);
