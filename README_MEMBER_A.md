@@ -43,8 +43,8 @@ flowchart LR
 
 | Sprint / Week | Dates | Key Completed Tasks | Commits / PRs |
 |---|---|---|---|
-| **Week 1** | Nov 10 – Nov 16 | Repo setup, Docker Compose, Flyway `V1` migration, GitHub Actions CI, App shell | PR #1, PR #3 |
-| **Week 2** | Nov 17 – Nov 23 | Google OIDC validation, local registration, BCrypt, email verification, Token Bucket filter | PR #7, PR #9 |
+| **Week 1** | Nov 10 – Nov 16 | Repo setup, Docker Compose, Flyway `V1` migration, GitHub Actions CI, App shell | PR #1 |
+| **Week 2** | Nov 17 – Nov 23 | Institutional `@KuetEmail` validator, BCrypt (`PasswordService`), SHA-256 verification tokens, Google OIDC (`GoogleAuthService`), JWT filter, Token Bucket (`RateLimitingFilter`), `AuthController`, `UserController` | PR #2 |
 | **Week 3** | Nov 24 – Nov 30 | CT Hub backend, State Pattern transition logic, Outbox event generation, unit tests | PR #14, PR #16 |
 | **Week 4** | Dec 01 – Dec 07 | Frontend CT calendar, timeline cards, course search & filters, verification modal | PR #21, PR #24 |
 | **Week 5** | Dec 08 – Dec 14 | CI failure-and-fix artifact, k6 load testing on CT calendar query, multi-stage Docker build | PR #29, PR #31 |
@@ -67,9 +67,12 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 
 | Testing Discipline | Test Suite | Target Class / Endpoint | Pass / Fail | Evidence Log |
 |---|---|---|---|---|
-| **Contract / Validation** | `AuthValidationTest` | `POST /api/v1/auth/register` (non-KUET email) | PASS | HTTP 400 with strict domain error message |
-| **Security & Pen-Test** | `GoogleOidcSecurityTest` | `GoogleAuthService` (tampered token) | PASS | Forged signature throws `BadCredentialsException` |
-| **Security / Rate-Limit** | `RateLimitFilterTest` | `RateLimitingFilter` | PASS | 11th burst request in 60s returns HTTP 429 |
+| **Contract / Validation** | `EmailDomainValidatorTest` | `@KuetEmail` & `EmailDomainValidator` | PASS | Accepts `@stud.kuet.ac.bd`; rejects gmail/yahoo/spoofed subdomains |
+| **Unit Testing** | `BCryptHashingUnitTest` | `PasswordService` | PASS | Verifies `$2a$12$` BCrypt hashes and random per-password salting |
+| **Security / Tokens** | `VerificationTokenServiceTest` | `VerificationTokenService` | PASS | Verifies SHA-256 hash at rest, 15m TTL, single-use rejection |
+| **Security / OIDC** | `GoogleAuthServiceTest` | `GoogleAuthService` | PASS | Forged signature throws `BadCredentialsException`; enforces `@stud.kuet.ac.bd` |
+| **Security / Rate-Limit** | `TokenBucketRateLimiterTest` & `AuthControllerSecurityTest` | `RateLimitingFilter` & `/api/v1/auth/**` | PASS | 11th burst login in 60s returns HTTP 429 + `Retry-After: 60` |
+| **Integration (DB)** | `AuthFlowIntegrationIT` | PostgreSQL 16 + Flyway + `/api/v1/auth/**` + `/api/v1/me` | PENDING CI | Verifies Flyway schema, unverified 403 gate, token consume, JWT profile PATCH |
 | **Unit Testing** | `CtStatePatternTest` | `CtState` transitions | PASS | Student blocked from verify; CR transitions to `VERIFIED` |
 | **Concurrency Testing** | `CtOptimisticLockTest` | `POST /api/v1/ct/events/{id}/reschedule` | PASS | Stale `@Version` triggers 409 Conflict |
 | **Integration Testing** | `OutboxEmitterIntegrationTest` | `CtService` | PASS | Atomically persists `CT_RESCHEDULED` in `outbox_events` |
