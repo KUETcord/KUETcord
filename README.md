@@ -327,8 +327,8 @@ All tools, databases, and deployment targets operate with **$0.00 monetary cost*
    - Complete step-by-step reproduction instructions documented below.
 3. **Monitoring & Observability for Bonus Marks (10 Marks - $0.00 / Month):**
    - **Spring Boot Actuator (2m):** Exposing `/actuator/health`, `/actuator/info`, `/actuator/prometheus` natively over HTTPS for $0 cloud cost.
-   - **Prometheus (4m):** Local container in `docker-compose.yml` (`:9090`) scraping `/actuator/prometheus` from both local and live cloud deployments.
-   - **Grafana (4m):** Local container in `docker-compose.yml` (`:3000`) visualizing JVM heap, RPS, p95 latency, and active WebSocket connections during the live demonstration.
+   - **Prometheus (4m):** Local container in `docker-compose.yml` (`:9090`) configured via [`monitoring/prometheus/prometheus.yml`](./monitoring/prometheus/prometheus.yml) to scrape `/actuator/prometheus` from both Docker (`backend:8080`) and native (`host.docker.internal:8080`) runs.
+   - **Grafana (4m):** Local container in `docker-compose.yml` (`:3000`) auto-provisioned via [`monitoring/grafana/provisioning/`](./monitoring/grafana/provisioning/) and [`monitoring/grafana/dashboards/kuetcord-observability.json`](./monitoring/grafana/dashboards/kuetcord-observability.json) visualizing JVM heap, RSS memory, HTTP RPS, p95/p99 latency histograms, GC pauses, and HikariCP pools.
 4. **Zero Paid Cloud Add-Ons Principle:**
    - No paid Redis or Kafka clusters: Handled via PostgreSQL Transactional Outbox (`SKIP LOCKED`) and in-memory Caffeine L1 caching.
    - No paid transactional email: Handled via free Gmail SMTP (500 emails/day) or Mailpit locally.

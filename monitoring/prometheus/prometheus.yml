@@ -3,10 +3,35 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
+  # Primary backend running inside Docker Compose network
   - job_name: 'kuetcord-backend'
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: ['backend:8080']
         labels:
           application: 'kuetcord-backend'
+          environment: 'docker'
 
+  # Native backend running directly on host via mvn spring-boot:run
+  - job_name: 'kuetcord-backend-native'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+        labels:
+          application: 'kuetcord-backend'
+          environment: 'local'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Optional: Scrape production Render deployment over HTTPS
+  # - job_name: 'kuetcord-backend-render'
+  #   metrics_path: '/actuator/prometheus'
+  #   scheme: https
+  #   static_configs:
+  #     - targets: ['kuetcord-backend.onrender.com']
+  #       labels:
+  #         application: 'kuetcord-backend'
+  #         environment: 'production'
