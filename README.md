@@ -210,6 +210,7 @@ SPRING_MAIL_PASSWORD=
 
 # Allowed Frontend Origins (CORS & WebSocket)
 ALLOWED_ORIGINS=http://localhost:5173,https://kuetcord.vercel.app
+FRONTEND_URL=http://localhost:5173
 ```
 
 ---
@@ -220,8 +221,10 @@ ALLOWED_ORIGINS=http://localhost:5173,https://kuetcord.vercel.app
 - `POST /api/v1/auth/register` — Register with `@stud.kuet.ac.bd` email & password
 - `POST /api/v1/auth/login` — Authenticate and receive JWT (blocked if unverified)
 - `POST /api/v1/auth/verify-email` — Consume single-use email verification token
+- `POST /api/v1/auth/resend-verification` — Resend institutional email verification token (rate-limited: 2 req/min)
 - `POST /api/v1/auth/google` — Exchange verified Google ID token for KUETcord JWT
 - `GET /api/v1/me` — Retrieve current authenticated profile
+- `PATCH /api/v1/me` — Update current authenticated user display name, department, and batch
 
 ### CT Hub (Member A)
 - `GET /api/v1/ct/courses` — Browse available courses by semester/department
