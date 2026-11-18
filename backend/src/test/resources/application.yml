@@ -19,6 +19,9 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+    # Members own interleaved versions (A: V1,V4,V7 | B: V2,V5,V8 | C: V3,V6,V9),
+    # so a lower version may legitimately land after a higher one.
+    out-of-order: true
     locations: classpath:db/migration
 
 management:

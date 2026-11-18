@@ -60,8 +60,8 @@ ON CONFLICT (id) DO NOTHING;
 SELECT setval('communities_id_seq', (SELECT MAX(id) FROM communities));
 
 INSERT INTO community_roles (id, community_id, name, color, position, permissions, is_default) VALUES
-(1, 1, 'Server Owner', '#E74C3C', 10, 127, FALSE), -- Full permissions
-(2, 1, 'Batch Moderator', '#2ECC71', 5, 45, FALSE),  -- KICK, MANAGE_MESSAGES
+(1, 1, 'Server Owner', '#E74C3C', 10, 255, FALSE), -- All 8 permission bits (see CommunityPermission)
+(2, 1, 'Batch Moderator', '#2ECC71', 5, 45, FALSE),  -- SEND(1) + KICK(4) + MANAGE_MESSAGES(8) + MUTE(32)
 (3, 1, 'Student Member', '#99AAB5', 1, 1, TRUE)       -- SEND_MESSAGES
 ON CONFLICT (id) DO NOTHING;
 
