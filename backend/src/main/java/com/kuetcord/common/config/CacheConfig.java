@@ -30,6 +30,12 @@ public class CacheConfig {
                 .expireAfterWrite(5, TimeUnit.MINUTES)
                 .maximumSize(2000)
                 .build());
+        // Member B: (communityId:userId) -> MemberAuthority for chat authorization hot path.
+        manager.registerCustomCache("community_permissions", Caffeine.newBuilder()
+                .expireAfterWrite(2, TimeUnit.MINUTES)
+                .maximumSize(5000)
+                .recordStats()
+                .build());
         return manager;
     }
 }

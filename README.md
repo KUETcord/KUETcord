@@ -235,21 +235,32 @@ FRONTEND_URL=http://localhost:5173
 - `POST /api/v1/ct/courses/{id}/follow` — Follow course to receive CT alerts
 
 ### Messaging & Communities (Member B — Includes Discord RBAC)
-- `GET/POST /api/v1/communities` — Browse or create campus communities
-- `GET /api/v1/communities/{id}` — View community details, channels & member list
-- `POST /api/v1/communities/{id}/channels` — Create text channel (`MANAGE_CHANNELS`)
-- `POST /api/v1/communities/{id}/roles` — Create server role (`MANAGE_ROLES`)
-- `POST /api/v1/communities/{id}/members/{userId}/roles/{roleId}` — Assign server role (`MANAGE_ROLES`)
-- `DELETE /api/v1/communities/{id}/members/{userId}` — Kick member from server (`KICK_MEMBERS`)
-- `POST /api/v1/communities/{id}/bans` — Ban member from server (`BAN_MEMBERS`)
-- `GET/POST /api/v1/conversations/direct` — Open or fetch 1:1 DM
-- `POST /api/v1/conversations/group` — Create group DM (3+ participants)
-- `POST /api/v1/conversations/{id}/members` — Add member to group DM (`ADD_TO_GROUP`)
-- `DELETE /api/v1/conversations/{id}/members/{userId}` — Kick member from group DM (`REMOVE_FROM_GROUP`)
-- `PATCH /api/v1/conversations/{id}/members/{userId}/role` — Promote/demote group admin
-- `POST /api/v1/conversations/{id}/leave` — Voluntarily exit group DM
-- `GET /api/v1/conversations/{id}/messages` — Paginated message history (cursor)
-- `GET /api/v1/conversations/{id}/sync` — Reconnection gap catch-up sync
+Server permission bitmask (`community_roles.permissions`): `SEND_MESSAGES=1`, `MANAGE_CHANNELS=2`, `KICK_MEMBERS=4`, `MANAGE_MESSAGES=8`, `BAN_MEMBERS=16`, `MUTE_MEMBERS=32`, `MANAGE_ROLES=64`, `MANAGE_SERVER=128`. The community owner implicitly holds all bits; role hierarchy (`position`) blocks acting on equal/higher ranks.
+
+- `GET /api/v1/communities?page=&size=` — Browse public communities plus private ones you belong to ✅
+- `POST /api/v1/communities` — Create community (auto-creates default `Member` role and `#general` channel) ✅
+- `GET /api/v1/communities/{id}` — Community details, visible channels, roles, members & your permissions (Member) ✅
+- `POST /api/v1/communities/{id}/join` — Join a public community (blocked if banned) ✅
+- `GET /api/v1/communities/{id}/channels` — List channels visible to you (Member) ✅
+- `POST /api/v1/communities/{id}/channels` — Create public/private text channel (`MANAGE_CHANNELS`) ✅
+- `POST /api/v1/communities/{id}/roles` — Create server role below your rank, only with bits you hold (`MANAGE_ROLES`) ✅
+- `PUT /api/v1/communities/{id}/roles/{roleId}` — Update role name, color, permissions, position (`MANAGE_ROLES`) ✅
+- `POST /api/v1/communities/{id}/members/{userId}/roles/{roleId}` — Assign server role (`MANAGE_ROLES`) ✅
+- `DELETE /api/v1/communities/{id}/members/{userId}` — Kick member from server (`KICK_MEMBERS`) ✅
+- `POST /api/v1/communities/{id}/bans` — Ban member from server (`BAN_MEMBERS`) ✅
+- `DELETE /api/v1/communities/{id}/bans/{userId}` — Lift a ban (`BAN_MEMBERS`) ✅
+- `GET /api/v1/conversations` — Your DMs and group DMs, most recent activity first ✅
+- `POST /api/v1/conversations/direct` — Open or fetch 1:1 DM (`201` new, `200` existing; race-safe) ✅
+- `POST /api/v1/conversations/group` — Create group DM (3–25 participants incl. creator) ✅
+- `GET /api/v1/conversations/{id}` — Conversation details & members (Participant) ✅
+- `PATCH /api/v1/conversations/{id}` — Rename group DM (`GROUP_OWNER` / `GROUP_ADMIN`) ✅
+- `POST /api/v1/conversations/{id}/members` — Add member to group DM (`ADD_TO_GROUP`: owner/admin) ✅
+- `DELETE /api/v1/conversations/{id}/members/{userId}` — Kick member from group DM (`REMOVE_FROM_GROUP`: owner any, admin members only) ✅
+- `PATCH /api/v1/conversations/{id}/members/{userId}/role` — Promote/demote group admin (`GROUP_OWNER`) ✅
+- `POST /api/v1/conversations/{id}/leave` — Voluntarily exit group DM (owner hands over to senior admin/member) ✅
+- `GET /api/v1/conversations/{id}/messages` — Paginated message history (cursor) — *Phase 2*
+- `GET /api/v1/conversations/{id}/sync` — Reconnection gap catch-up sync — *Phase 3*
+- `POST /api/v1/conversations/{id}/read-state` — Update last-read marker — *Phase 2*
 
 ### Notification Center (Member B)
 - `GET /api/v1/notifications` — Paginated notification inbox
