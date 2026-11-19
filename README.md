@@ -269,10 +269,13 @@ Server permission bitmask (`community_roles.permissions`): `SEND_MESSAGES=1`, `M
 - `PUT /api/v1/conversations/{id}/notification-preference` — Set Notify/Mute mode
 
 ### Contest & Challenge Board (Member C)
-- `GET /api/v1/opportunities` — Browse contests (sorted by `deadline` or `recent`)
-- `POST /api/v1/opportunities` — Submit opportunity listing
-- `POST /api/v1/opportunities/{id}/bookmark` — Bookmark opportunity
-- `POST /api/v1/opportunities/{id}/playgrounds` — Link contest to Playground
+- `GET /api/v1/opportunities` — Ranked, paged browse. Params: `strategy` (`deadline` default, or `recent`), `category` (`PROGRAMMING_CONTEST`, `HACKATHON`, `ROBOTICS`, `RESEARCH`, `CASE_COMPETITION`), `mode` (`ONLINE`, `ON_SITE`, `HYBRID`), `status` (`UNVERIFIED`, `VERIFIED`), `deadlineBefore` (ISO-8601), `q` (title/organizer search), `bookmarkedOnly`, `page`, `size` (max 50)
+- `POST /api/v1/opportunities` — Submit opportunity listing (stored `UNVERIFIED`, returns `201`)
+- `GET /api/v1/opportunities/{id}` — Detail with eligibility, official source link, submitter, `bookmarked`, `bookmarkCount`
+- `POST /api/v1/opportunities/{id}/bookmark` — Bookmark opportunity (idempotent)
+- `DELETE /api/v1/opportunities/{id}/bookmark` — Remove bookmark (idempotent)
+- `POST /api/v1/opportunities/{id}/verify` — Verify listing (`ROLE_MODERATOR` / `ROLE_ADMIN`)
+- `POST /api/v1/opportunities/{id}/playgrounds` — Link contest to Playground *(Week 3)*
 
 ### Project Playgrounds & Study Circles (Member C)
 - `GET/POST /api/v1/playgrounds` — List or create project playgrounds (RBAC: `LEAD`, `CONTRIBUTOR`, `VIEWER`)
