@@ -227,12 +227,16 @@ FRONTEND_URL=http://localhost:5173
 - `PATCH /api/v1/me` — Update current authenticated user display name, department, and batch
 
 ### CT Hub (Member A)
-- `GET /api/v1/ct/courses` — Browse available courses by semester/department
-- `GET /api/v1/ct/events` — Query CT calendar and schedules
-- `POST /api/v1/ct/events` — Submit proposed CT entry (`UNVERIFIED`)
-- `POST /api/v1/ct/events/{id}/verify` — Transition CT to `VERIFIED` (CR/Mod)
-- `POST /api/v1/ct/events/{id}/reschedule` — Reschedule CT (with `@Version` check)
-- `POST /api/v1/ct/courses/{id}/follow` — Follow course to receive CT alerts
+- `GET /api/v1/ct/courses` — Browse available courses by department/semester/year/query (Caffeine L1 cached) ✅
+- `POST /api/v1/ct/courses` — Create course offering (`ROLE_CR`, `ROLE_MODERATOR`, `ROLE_ADMIN`) ✅
+- `GET /api/v1/ct/events` — Query CT calendar and schedules (`courseId`, `status`, `from`, `to`) ✅
+- `POST /api/v1/ct/events` — Submit proposed CT entry (`UNVERIFIED`) ✅
+- `GET /api/v1/ct/events/{id}` — Retrieve CT details & change history (SingleFlight request coalesced) ✅
+- `POST /api/v1/ct/events/{id}/verify` — Transition CT to `VERIFIED` via State Pattern (CR/Mod/Admin) ✅
+- `POST /api/v1/ct/events/{id}/reschedule` — Reschedule CT with `@Version` optimistic locking & atomic outbox ✅
+- `POST /api/v1/ct/events/{id}/cancel` — Cancel CT with `@Version` check & terminal state lock (CR/Mod/Admin) ✅
+- `POST /api/v1/ct/courses/{id}/follow` — Follow course to receive CT alerts ✅
+- `DELETE /api/v1/ct/courses/{id}/follow` — Unfollow course ✅
 
 ### Messaging & Communities (Member B — Includes Discord RBAC)
 Server permission bitmask (`community_roles.permissions`): `SEND_MESSAGES=1`, `MANAGE_CHANNELS=2`, `KICK_MEMBERS=4`, `MANAGE_MESSAGES=8`, `BAN_MEMBERS=16`, `MUTE_MEMBERS=32`, `MANAGE_ROLES=64`, `MANAGE_SERVER=128`. The community owner implicitly holds all bits; role hierarchy (`position`) blocks acting on equal/higher ranks.
