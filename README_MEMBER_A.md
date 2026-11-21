@@ -50,9 +50,9 @@ flowchart LR
 |---|---|---|---|
 | **Phase 1 (Week 1)** | Nov 09, 2026 | Repo setup, Docker Compose, Flyway `V1`–`V3` baseline, GitHub Actions CI, App shell, Scrum & QA Excel Trackers | PR #1 |
 | **Phase 2 (Week 2)** | Nov 14, 2026 | Institutional `@KuetEmail` validator, BCrypt (`PasswordService`), SHA-256 verification tokens, Google OIDC (`GoogleAuthService`), JWT filter, Token Bucket (`RateLimitingFilter`), `AuthController`, `UserController` | PR #2 |
-| **Phase 3 (Week 3)** | Nov 15 – Nov 21, 2026 | CT Hub backend, State Pattern transition logic, `@Version` optimistic locking, Outbox event generation, unit & concurrency tests | Planned |
+| **Phase 3 (Week 3)** | Nov 21, 2026 | CT Hub backend (`CourseOffering`, `CourseFollow`, `CtEvent`, `CtEventHistory`), State Pattern (`CtState`), `@Version` optimistic locking, SingleFlight `RequestCoalescer`, atomic `outbox_events`, unit/security/concurrency tests | PR #6 |
 | **Phase 4 (Week 4)** | Nov 22 – Nov 28, 2026 | Frontend CT calendar, timeline cards, course search & filters, verification modal, `break-ui` testing | Planned |
-| **Phase 5 (Week 5)** | Nov 29 – Dec 05, 2026 | CI failure-and-fix artifact, k6 load testing on CT calendar query, multi-stage Docker build, Prometheus/Grafana | Planned |
+| **Phase 5 (Observability)** | Nov 16, 2026 | Prometheus HTTP latency histograms, scraper config (`monitoring/prometheus/`), auto-provisioned Grafana datasource & dashboard (`monitoring/grafana/`) | PR #3 |
 | **Phase 6 (Week 6)** | Dec 06 – Dec 12, 2026 | Cross-module integration, seed data script, demo rehearsal, viva prep | Planned |
 
 ---
@@ -78,9 +78,9 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 | **Security / OIDC** | `GoogleAuthServiceTest` | `GoogleAuthService` | PASS | Forged signature throws `BadCredentialsException`; enforces `@stud.kuet.ac.bd` |
 | **Security / Rate-Limit** | `TokenBucketRateLimiterTest` & `AuthControllerSecurityTest` | `RateLimitingFilter` & `/api/v1/auth/**` | PASS | 11th burst login in 60s returns HTTP 429 + `Retry-After: 60` |
 | **Integration (DB)** | `AuthFlowIntegrationIT` | PostgreSQL 16 + Flyway + `/api/v1/auth/**` + `/api/v1/me` | PASS | Verified in CI (Run `43498480126`): Flyway schema, unverified 403 gate, token consume, JWT profile PATCH |
-| **Unit Testing** | `CtStatePatternTest` | `CtState` transitions | PLANNED | Phase 3 target: Student blocked from verify; CR transitions to `VERIFIED` |
-| **Concurrency Testing** | `CtOptimisticLockTest` | `POST /api/v1/ct/events/{id}/reschedule` | PLANNED | Phase 3 target: Stale `@Version` triggers 409 Conflict |
-| **Integration Testing** | `OutboxEmitterIntegrationTest` | `CtService` | PLANNED | Phase 3 target: Atomically persists `CT_RESCHEDULED` in `outbox_events` |
+| **Unit Testing** | `CtStatePatternTest` & `RequestCoalescerUnitTest` | `CtState` transitions & SingleFlight `RequestCoalescer` | PASS | Verifies legal/illegal CT transitions (terminal `CANCELLED`) and 12-thread single-query coalescing |
+| **Security / RBAC & Concurrency** | `CtHubControllerSecurityTest` | `/api/v1/ct/courses/**` & `/api/v1/ct/events/**` | PASS | `ROLE_STUDENT` blocked with HTTP 403; `ROLE_CR` allowed; stale `@Version` returns HTTP 409 |
+| **Integration (DB/Outbox)** | `CtHubConcurrencyAndOutboxIT` | PostgreSQL 16 + Flyway + `CtEventService` + `outbox_events` | PENDING CI | Verifies `@Version` 409 conflict, terminal cancel, history audit trail, and atomic `CT_VERIFIED`/`CT_RESCHEDULED`/`CT_CANCELLED` outbox rows |
 | **Performance & Load** | `k6_ct_read.js` | `GET /api/v1/ct/events` (50 VUs) | PLANNED | Phase 5 target: p95 <= 150ms under 50 VUs |
 | **Adversarial UI (`break-ui`)** | `AppShellBreakUiTest` | `<AppShell />` & `<CtEventCard />` | PLANNED | Phase 4 target: 80-char title wraps cleanly; empty states render |
 | **CI/CD Smoke Testing** | `deploy.yml` Actuator Health | `GET /actuator/health` | PLANNED | Phase 5 target: Returns `{"status":"UP"}` with PostgreSQL UP |
