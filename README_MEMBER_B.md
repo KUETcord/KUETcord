@@ -66,6 +66,36 @@ Group size is enforced at 3–25 participants; every participant must be an `ACT
 - `outbox_events`: adds `next_attempt_at`, `last_error_code`, poll index `(status, next_attempt_at, id)` for the Phase 4 `SKIP LOCKED` worker (existing V1 columns untouched).
 - Flyway `out-of-order: true` enabled because members own interleaved versions (A: V4, B: V5, C: V6 may merge in any order).
 
+### 2.0b STOMP Engine, Security Interceptors & Idempotent Send (Phase 2 — implemented)
+
+**Package:** `com.kuetcord.messaging.websocket` (+ `MessageService`, `MessageBroadcaster`, `MessageController`).
+
+**Connection & heartbeats (`WebSocketConfig`, ADR-005):**
+- `/ws` with SockJS fallback (native clients use `/ws/websocket`), origins from `ALLOWED_ORIGINS`.
+- Simple broker on `/topic`, `/queue` advertising `heart-beat:10000,10000` from a private 2-thread `ws-heartbeat-` scheduler. A client that goes silent is closed by the broker after 3 missed intervals (≤ 30 s, Spring's multiplier).
+- Slow-consumer eviction: 512 KB send buffer, 10 s send time limit, 64 KB max frame.
+- Bulkheads: `ws-inbound-` 8/32/1000, `ws-outbound-` 8/32/2000, `fanout-worker-` 8/32/5000, `ws-heartbeat-` 2. The heartbeat scheduler is intentionally not a Spring bean, so future `@Scheduled` jobs cannot run on it.
+
+**Interceptor chain (inbound channel, in order):**
+1. `StompAuthChannelInterceptor`: `CONNECT` must carry `Authorization: Bearer <jwt>`, validated with Member A's `JwtTokenService`. The session principal is a `StompPrincipal` whose name is the **user ID**, so `/user/...` destinations and `SimpUserRegistry` are keyed by ID.
+2. `StompDestinationGuard`: a fail-closed allowlist for `SUBSCRIBE` and `SEND` (conversation topics require `ConversationAccessPolicy`; direct `SEND` to `/topic/**` and raw `/queue/**` subscriptions are denied), plus a 5 frames/s token bucket per session (reusing Member A's lock-free `TokenBucket`).
+3. `StompSecurityErrorHandler`: unwraps security failures into readable `ERROR` frames (`UNAUTHORIZED: ...` / `FORBIDDEN: ...`) and keeps every other error generic so nothing internal leaks.
+
+**Send pipeline (Web-Queue-Worker):** `SEND /app/conversations/{id}/messages` → `MessageService.send`:
+- Validates (non-blank, ≤ 2000 chars, key ≤ 64) and authorizes with `requireSend`. Channels also need `SEND_MESSAGES`.
+- Persists with `INSERT ... ON CONFLICT (conversation_id, sender_id, idempotency_key) DO NOTHING`, then commits.
+- Sends a `RECEIPT` to the sender only, then the `fanout-worker` pool broadcasts to `/topic/conversations/{id}`.
+- A retry of a known key gets its RECEIPT again but is **not** re-broadcast.
+- Rejections go privately to `/user/queue/errors` with the frame's `receipt` id, so the UI can flip exactly that bubble to FAILED.
+- *Why not `try save / catch DataIntegrityViolationException` as first sketched?* On PostgreSQL a failed INSERT aborts the whole transaction, so the follow-up "find existing" query would fail. `ON CONFLICT DO NOTHING` never aborts.
+
+**History & read state:**
+- Keyset pagination: `WHERE conversation_id = ? AND id < :cursor ORDER BY id DESC LIMIT n+1` on `idx_messages_cursor`, returned oldest-first with `nextCursor` and `hasMore`.
+- The read marker is a monotonic upsert (`GREATEST(old, new)`), so a stale tab can never resurrect unread badges.
+- Unread counts for the whole conversation list come from a single `GROUP BY` query.
+
+**Mentions:** `MentionParser` extracts `@username` tokens (identity alphabet `[A-Za-z0-9._-]`; emails are ignored; at most 20 per message). Only users who can read the conversation are stored in `message_mentions`. The sender is never stored as mentioning themselves.
+
 ### 2.1 Real-Time Resilience Infrastructure
 - **STOMP Heartbeats & Dead-Socket Eviction:** Negotiated 10s/10s heartbeats via `ThreadPoolTaskScheduler`. If a client fails to transmit frames for 25s, the server evicts the dead socket and frees system resources.
 - **Client Reconnection State Machine:** State transitions across `DISCONNECTED` $\rightarrow$ `CONNECTING` $\rightarrow$ `CONNECTED` $\rightarrow$ `RECONNECTING` with exponential backoff ($1s \dots 30s$) + $20\%$ randomized jitter.
@@ -86,7 +116,7 @@ Group size is enforced at 3–25 participants; every participant must be an `ACT
 | Sprint / Week | Dates | Key Completed Tasks | Commits / PRs |
 |---|---|---|---|
 | **Week 1** | Nov 10 – Nov 19 | ✅ `V5` schema alignment migration; Community/Conversation/Message JPA models; `ConversationAccessPolicy` (fail-closed, per-type resolvers); Community RBAC (bitmask + hierarchy + Caffeine cache); Community, DM & Group DM REST APIs; 20 new tests | `feature/messaging-conversation-engine` (PR pending) |
-| **Week 2** | Nov 17 – Nov 23 | STOMP broker setup, 10s/10s heartbeats, STOMP JWT channel interceptors, send/receipt ACK | PR #8, PR #11 |
+| **Week 2** | Nov 20 – Nov 23 | ✅ STOMP broker + SockJS, 10s/10s heartbeats, bulkhead pools, slow-consumer limits; JWT `CONNECT` interceptor; fail-closed SUBSCRIBE/SEND guard + 5 frames/s rate limit; idempotent send with RECEIPT-after-commit and async fan-out; `/user/queue/errors`; keyset history; monotonic read state + unread counts; `@mention` resolution; 16 new tests | `feature/stomp-heartbeat-interceptors` (PR pending) |
 | **Week 3** | Nov 24 – Nov 30 | Reconnect Catch-up `/sync`, multi-tab presence engine, debounced typing indicators | PR #15, PR #18 |
 | **Week 4** | Dec 01 – Dec 07 | Notification Center backend, Strategy pattern for preferences, Outbox worker (`SKIP LOCKED`) | PR #22, PR #25 |
 | **Week 5** | Dec 08 – Dec 14 | Virtualized chat UI (`react-virtuoso`), Notification bell & mute dropdown, k6 load testing | PR #28, PR #32 |
@@ -116,8 +146,11 @@ Only suites that exist and have been run are marked PASS; everything else is `PE
 | **Integration / Security** | `CommunityControllerIntegrationTest` (4) | `/api/v1/communities/**` | PASS | Kick 403 w/o permission, owner immune, kicked user loses reads, ban blocks rejoin until unban, no privilege escalation, private channels hidden |
 | **Integration / Security** | `ConversationControllerIntegrationTest` (5) | `/api/v1/conversations/**` | PASS | Group <3 → 400, outsider + removed member → 403 (IDOR), Group RBAC matrix, owner hand-over on leave, DM reuse 201→200 |
 | **Concurrency Testing** | `DirectConversationConcurrencyIntegrationTest` (1) | `ConversationService.openDirect` | PASS | 8 racing threads → exactly 1 DIRECT conversation with 2 members |
-| **Protocol / WebSocket** | `StompHeartbeatTest` | `WebSocketConfig` | PENDING (Phase 2) | — |
-| **Concurrency Testing** | `MessageConcurrencyIntegrationTest` | `MessageService` idempotency | PENDING (Phase 2) | — |
+| **Unit Testing** | `MessageServiceTest` (4) | `MessageService`, `MentionParser` | PASS | Known key returns original without insert; >2000 chars / blank / missing or oversize key rejected before DB; non-member 403; mention parsing (emails ignored, dedupe, cap 20) |
+| **Security Unit** | `StompDestinationGuardTest` (3) | `StompDestinationGuard` | PASS | Non-member SUBSCRIBE denied; raw `/queue` snooping, direct `/topic` SEND, unauthenticated frames denied; 6th frame/s rejected, per-session buckets freed on DISCONNECT |
+| **Protocol / WebSocket** | `WebSocketStompIntegrationTest` (5) | `/ws` real socket, random port | PASS | `heart-beat:10000,10000` negotiated; no/forged token never CONNECTED; RECEIPT after commit + live broadcast, forged `senderId` ignored, retry not re-broadcast; non-member SUBSCRIBE → `ERROR`; oversize SEND → `/user/queue/errors` with receipt id |
+| **Concurrency Testing** | `MessageConcurrencyIntegrationTest` (1) | `MessageService` idempotency | PASS | 10 threads, same key → 1 row, 1 "created", same ID returned to all |
+| **Integration (REST/DB)** | `MessageHistoryIntegrationTest` (3) | `/messages`, `/read-state`, `GET /conversations` | PASS | 75 msgs → 3 pages of ≤30, no gaps or duplicates; read marker monotonic; unread counts; outsider 403; mentions only for participants |
 | **Resilience & Chaos** | `DeadSocketEvictionTest` | `WebSocketDisconnectListener` | PENDING (Phase 3) | — |
 | **Resilience / Recovery** | `SyncGapCatchupTest` | `GET /api/v1/conversations/{id}/sync` | PENDING (Phase 3) | — |
 | **Unit Testing** | `SimpUserRegistryPresenceTest` | Presence engine | PENDING (Phase 3) | — |
@@ -129,6 +162,8 @@ Only suites that exist and have been run are marked PASS; everything else is `PE
 
 **Phase 1 local run (2026-11-19, JDK 21, PostgreSQL 16):** `mvn test` → `Tests run: 51, Failures: 0, Errors: 0` (20 Member B + 31 existing); `mvn verify` → failsafe `AuthFlowIntegrationIT` PASS, `BUILD SUCCESS`.
 
+**Phase 2 local run (2026-11-21, JDK 21, PostgreSQL 16, rebased on develop incl. CT Hub + Contest Board):** `mvn verify` → surefire `Tests run: 104, Failures: 0, Errors: 0` (36 Member B), failsafe `Tests run: 2, Failures: 0`, `BUILD SUCCESS`.
+
 ---
 
 ## 6. Architectural Decision Records (ADRs) Authored
@@ -138,6 +173,9 @@ Only suites that exist and have been run are marked PASS; everything else is `PE
   - *Decision:* one `conversations`/`messages` model and one delivery pipeline; authorization delegated to a `ConversationAccessResolver` per type, selected by `ConversationAccessPolicy`.
   - *Consequences:* Member C adds chat to Playgrounds/Study Circles by registering a resolver bean, with no messaging changes (Open/Closed). Types without a resolver are denied (fail-closed), so a missing integration can never leak messages.
 - **ADR-005:** Integration of STOMP Protocol Heartbeats with Background TaskScheduler for Dead-Socket Detection.
+  - *Context:* closed laptop lids and campus Wi-Fi roaming drop TCP connections without a FIN. The server keeps "zombie" sockets, leaks threads and shows stale presence.
+  - *Decision:* negotiate `heart-beat:10000,10000` and run broker heartbeats on a dedicated, non-bean 2-thread `ws-heartbeat-` scheduler. Spring's simple broker closes a session after 3 silent intervals.
+  - *Consequences:* zombies are evicted within ≤ 30 s and the eviction raises `SessionDisconnectEvent` (Phase 3 presence hooks in here). Heartbeat threads can't be starved by chat fan-out or future `@Scheduled` jobs. Cost: one `\n` frame per 10 s per idle socket. The simple broker supports one instance only; scaling out would need a broker relay.
 - **ADR-006:** Use of PostgreSQL `FOR UPDATE SKIP LOCKED` for Reliable Multi-Thread Outbox Polling.
 
 ---

@@ -45,4 +45,10 @@ public class ChannelAccessResolver implements ConversationAccessResolver {
                 || memberRepository.existsByConversationIdAndUserIdAndActiveStatus(
                         conversation.getId(), userId, MemberStatus.ACTIVE);
     }
+
+    @Override
+    public boolean canSend(Conversation conversation, Long userId) {
+        return canAccess(conversation, userId)
+                && authorityService.authorityOf(conversation.getCommunityId(), userId).has(CommunityPermission.SEND_MESSAGES);
+    }
 }
