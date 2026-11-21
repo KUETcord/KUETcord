@@ -15,6 +15,8 @@ public record ConversationSummaryDto(
         String displayTitle,
         Long peerUserId,
         long memberCount,
+        /* Messages from others newer than the caller's read marker (muting never hides this). */
+        long unreadCount,
         Instant updatedAt
 ) {
 }

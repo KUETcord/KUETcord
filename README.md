@@ -262,9 +262,24 @@ Server permission bitmask (`community_roles.permissions`): `SEND_MESSAGES=1`, `M
 - `DELETE /api/v1/conversations/{id}/members/{userId}` — Kick member from group DM (`REMOVE_FROM_GROUP`: owner any, admin members only) ✅
 - `PATCH /api/v1/conversations/{id}/members/{userId}/role` — Promote/demote group admin (`GROUP_OWNER`) ✅
 - `POST /api/v1/conversations/{id}/leave` — Voluntarily exit group DM (owner hands over to senior admin/member) ✅
-- `GET /api/v1/conversations/{id}/messages` — Paginated message history (cursor) — *Phase 2*
+- `GET /api/v1/conversations/{id}/messages?cursor=&limit=` — Keyset-paginated history (default 30, max 100; page returned oldest-first, pass `nextCursor` for older) ✅
+- `POST /api/v1/conversations/{id}/read-state` — Move last-read marker forward (monotonic) and get remaining `unreadCount` ✅
+- `GET /api/v1/conversations` now includes `unreadCount` per conversation ✅
 - `GET /api/v1/conversations/{id}/sync` — Reconnection gap catch-up sync — *Phase 3*
-- `POST /api/v1/conversations/{id}/read-state` — Update last-read marker — *Phase 2*
+
+### Real-Time WebSocket / STOMP Contract (Member B)
+Endpoint: `/ws` (SockJS) or `/ws/websocket` (native WebSocket). Origins follow `ALLOWED_ORIGINS`. Every frame below is authorized server-side; anything not listed is rejected with a STOMP `ERROR`.
+
+| Frame | Destination | Rule / Payload |
+|---|---|---|
+| `CONNECT` | `/ws` | Headers `Authorization: Bearer <jwt>`, `heart-beat: 10000,10000`. Bad/missing token → `ERROR` (`UNAUTHORIZED: ...`) ✅ |
+| `SEND` | `/app/conversations/{id}/messages` | `{ "content": "...", "idempotencyKey": "<uuid>" }` + header `receipt: msg-<uuid>`. Max 2000 chars, 5 frames/s per session; sender taken from JWT ✅ |
+| `RECEIPT` | (to sender) | `receipt-id: msg-<uuid>`, sent only after the DB commit; a retry with the same key is ACKed but not re-broadcast ✅ |
+| `SUBSCRIBE` | `/topic/conversations/{id}` | Members only (`ConversationAccessPolicy`). Receives `ChatMessageDto` ✅ |
+| `SUBSCRIBE` | `/user/queue/errors` | Private rejections: `{ code, message, receiptId }` so the UI can mark that bubble FAILED ✅ |
+| `SEND` / `SUBSCRIBE` | `/app/conversations/{id}/typing`, `/topic/conversations/{id}/typing` | Members only — handler in *Phase 3* |
+| `SUBSCRIBE` | `/topic/presence` | Any authenticated user — publisher in *Phase 3* |
+| `SUBSCRIBE` | `/user/queue/notifications` | Own queue only — publisher in *Phase 4* |
 
 ### Notification Center (Member B)
 - `GET /api/v1/notifications` — Paginated notification inbox

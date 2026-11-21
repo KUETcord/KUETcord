@@ -16,6 +16,7 @@ import com.kuetcord.messaging.model.ConversationType;
 import com.kuetcord.messaging.model.GroupRole;
 import com.kuetcord.messaging.model.MemberStatus;
 import com.kuetcord.messaging.repository.ConversationMemberRepository;
+import com.kuetcord.messaging.repository.ConversationReadStateRepository;
 import com.kuetcord.messaging.repository.ConversationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -49,6 +50,7 @@ public class ConversationService {
     private final ConversationMemberRepository memberRepository;
     private final ConversationAccessPolicy accessPolicy;
     private final UserRepository userRepository;
+    private final ConversationReadStateRepository readStateRepository;
 
     /** Result of opening a DM: whether a new conversation was created (201) or reused (200). */
     public record OpenDirectResult(ConversationDetailDto conversation, boolean created) {
@@ -73,6 +75,8 @@ public class ConversationService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         Map<Long, User> peers = usersById(peerIds);
+        Map<Long, Long> unread = readStateRepository.countUnread(userId, ids).stream()
+                .collect(Collectors.toMap(row -> ((Number) row[0]).longValue(), row -> ((Number) row[1]).longValue()));
 
         return conversations.stream()
                 .map(c -> {
@@ -81,7 +85,7 @@ public class ConversationService {
                     User peer = peerId != null ? peers.get(peerId) : null;
                     String displayTitle = peer != null ? peer.getDisplayName() : c.getTitle();
                     return new ConversationSummaryDto(c.getId(), c.getType(), c.getTitle(), displayTitle,
-                            peerId, members.size(), c.getUpdatedAt());
+                            peerId, members.size(), unread.getOrDefault(c.getId(), 0L), c.getUpdatedAt());
                 })
                 .toList();
     }

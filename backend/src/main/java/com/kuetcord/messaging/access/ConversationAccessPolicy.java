@@ -55,10 +55,31 @@ public class ConversationAccessPolicy {
         return resolver != null && resolver.canAccess(conversation, userId);
     }
 
+    public boolean canSend(Long conversationId, Long userId) {
+        if (conversationId == null || userId == null) {
+            return false;
+        }
+        return conversationRepository.findById(conversationId)
+                .map(conversation -> canSend(conversation, userId))
+                .orElse(false);
+    }
+
+    public boolean canSend(Conversation conversation, Long userId) {
+        ConversationAccessResolver resolver = resolvers.get(conversation.getType());
+        return resolver != null && resolver.canSend(conversation, userId);
+    }
+
     /** Loads the conversation or throws 403 for both "missing" and "not allowed". */
     public Conversation requireAccess(Long conversationId, Long userId) {
         return conversationRepository.findById(conversationId)
                 .filter(conversation -> canAccess(conversation, userId))
+                .orElseThrow(() -> new ForbiddenException(DENIED_MESSAGE));
+    }
+
+    /** Like {@link #requireAccess} but for posting; channels also need SEND_MESSAGES. */
+    public Conversation requireSend(Long conversationId, Long userId) {
+        return conversationRepository.findById(conversationId)
+                .filter(conversation -> canSend(conversation, userId))
                 .orElseThrow(() -> new ForbiddenException(DENIED_MESSAGE));
     }
 }
