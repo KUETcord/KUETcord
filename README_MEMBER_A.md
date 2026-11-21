@@ -37,6 +37,11 @@ flowchart LR
 - **Optimistic Concurrency Control:** `ct_events.version` column prevents simultaneous reschedule overwrites, returning HTTP `409 Conflict`.
 - **Course Follows:** Course followers automatically receive notifications when CTs are verified or rescheduled via transactional outbox rows.
 
+### 2.3 Observability Stack (Prometheus & Grafana)
+- **Actuator Metrics & Histograms:** `application.yml` exposes `/actuator/prometheus` and enables `http.server.requests` percentile histograms and `application` metric tags.
+- **Prometheus Scraper:** `monitoring/prometheus/prometheus.yml` scrapes both Docker (`backend:8080`) and native (`host.docker.internal:8080`) instances every 5s.
+- **Auto-Provisioned Grafana Dashboard:** `monitoring/grafana/provisioning/` automatically registers the Prometheus datasource (`http://prometheus:9090`) and loads `monitoring/grafana/dashboards/kuetcord-observability.json` (RPS, p50/p95/p99 latency, JVM Heap/RSS 512MB budget, GC pauses, HikariCP pools).
+
 ---
 
 ## 3. Sprint-by-Sprint Development Log
