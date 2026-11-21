@@ -16,5 +16,11 @@ public interface ConversationAccessResolver {
 
     Set<ConversationType> supportedTypes();
 
+    /** Read history and subscribe to live updates. */
     boolean canAccess(Conversation conversation, Long userId);
+
+    /** Post messages. Defaults to read access; channels additionally require SEND_MESSAGES. */
+    default boolean canSend(Conversation conversation, Long userId) {
+        return canAccess(conversation, userId);
+    }
 }

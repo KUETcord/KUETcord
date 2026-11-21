@@ -28,6 +28,11 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
             """, nativeQuery = true)
     int insertDirectIfAbsent(@Param("creatorId") Long creatorId, @Param("directKey") String directKey);
 
+    /** Bumps last-activity without loading the entity (one UPDATE per new message). */
+    @Modifying
+    @Query("UPDATE Conversation c SET c.updatedAt = :at WHERE c.id = :id")
+    int touch(@Param("id") Long id, @Param("at") java.time.Instant at);
+
     List<Conversation> findByCommunityIdAndTypeOrderByIdAsc(Long communityId, ConversationType type);
 
     /** Non-channel conversations where the user is an active participant, most recent activity first. */
