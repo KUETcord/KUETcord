@@ -78,6 +78,51 @@ flowchart LR
 - **Milestones & Decision Log:** Structured tables tracking team milestone dates and recording technical decisions with rationales.
 - **Transactional Outbox Emitters:** Writes `TASK_ASSIGNED` and `MILESTONE_REACHED` rows to `outbox_events` atomically with task mutations.
 
+#### 2.2.1 Week 2 implementation (backend, done)
+
+**Package:** `com.kuetcord.playgrounds` (`access`, `controller`, `dto`, `model`, `repository`, `service`).
+
+| Method | Route | Access | Behaviour |
+|---|---|---|---|
+| `GET` | `/api/v1/playgrounds` | Authenticated | "My playgrounds": every workspace the caller belongs to with `myRole` and `memberCount`, most recently updated first. |
+| `POST` | `/api/v1/playgrounds` | Authenticated | Create a workspace (`title`, `problemStatement`, up to 8 `tags`, `visibility` default `PUBLIC`, `repoUrl`, `demoUrl`). The creator becomes `LEAD`. Returns `201`. |
+| `GET` | `/api/v1/playgrounds/{id}` | Member, or anyone for `PUBLIC` | Workspace header: metadata, members, per-column `taskCounts`, `myRole`, `version`. |
+| `PATCH` | `/api/v1/playgrounds/{id}` | `LEAD` | Partial metadata edit incl. `status` (`PLANNING`, `IN_PROGRESS`, `COMPLETED`, `ARCHIVED`). Requires `expectedVersion`; `""` clears a link, `[]` clears tags. |
+| `POST` | `/api/v1/playgrounds/{id}/members` | `LEAD` | Invite an existing student as `LEAD`, `CONTRIBUTOR` (default) or `VIEWER`. Already a member: `409`; unknown user: `404`. |
+| `GET` | `/api/v1/playgrounds/{id}/tasks` | Member, or anyone for `PUBLIC` | Kanban board: always 5 columns in order `BACKLOG`, `TODO`, `IN_PROGRESS`, `REVIEW`, `DONE`; cards ordered by `position`, each with `assignee` and `version`. |
+| `POST` | `/api/v1/playgrounds/{id}/tasks` | `LEAD` / `CONTRIBUTOR` | Create a card (`status` default `BACKLOG`, `priority` default `MEDIUM`, optional `assigneeId`, `dueDate`). It goes to the bottom of its column. |
+| `GET` | `/api/v1/playgrounds/{id}/tasks/{taskId}` | Member, or anyone for `PUBLIC` | Full card incl. description. |
+| `PATCH` | `/api/v1/playgrounds/{id}/tasks/{taskId}` | `LEAD` / `CONTRIBUTOR` | Move / assign / re-prioritise / edit. Requires `expectedVersion`; `clearAssignee` / `clearDueDate` remove values. A moved card goes to the bottom of the new column. |
+| `DELETE` | `/api/v1/playgrounds/{id}/tasks/{taskId}?expectedVersion=n` | `LEAD` / `CONTRIBUTOR` | Delete a card, `204`. A stale version is `409`. |
+| `GET` / `POST` | `/api/v1/playgrounds/{id}/milestones` | read: viewers; write: `LEAD` / `CONTRIBUTOR` | Timeline, soonest first; `overdue` is derived (still `PENDING` and past `dueDate`). |
+| `GET` / `POST` | `/api/v1/playgrounds/{id}/decisions` | read: viewers; write: `LEAD` / `CONTRIBUTOR` | Append-only decision log (`decision`, optional `rationale`), newest first, with author name. |
+
+**Roles (`PlaygroundAccessPolicy`, one place for every check):**
+- `PlaygroundRole.grants(permission)`: `VIEW` for every role, `EDIT_BOARD` for `LEAD` and `CONTRIBUTOR`, `MANAGE` (metadata, invitations) for `LEAD` only.
+- Non-members can only read, and only `PUBLIC` playgrounds. A `PRIVATE` playground answers **404** (not 403) to non-members, so outsiders cannot even discover that it exists by probing IDs.
+- An `ARCHIVED` playground is frozen: board, milestone, decision and invitation writes return `409` until a lead `PATCH`es the status back. Reads keep working.
+- Only `LEAD` / `CONTRIBUTOR` members can be assignees; assigning a `VIEWER` or an outsider is a `400`.
+- These are per-playground roles, so they are checked against `playground_members` in the service layer, not with `@PreAuthorize` on the global JWT roles.
+
+**Optimistic concurrency on cards (ADR-010):**
+- `ProjectTask` and `Playground` carry JPA `@Version`. Clients echo the `version` they last saw as `expectedVersion`.
+- A stale `expectedVersion` is rejected before anything is written (`VersionGuard` throws `OptimisticLockException`).
+- When two requests carry the same, current version at the same instant, both pass that check; PostgreSQL's row lock serialises their `UPDATE ... WHERE id = ? AND version = ?`, the loser matches zero rows and Spring raises `ObjectOptimisticLockingFailureException`.
+- Both paths are mapped to **409 Conflict** by the shared `GlobalExceptionHandler`, which the Week 4 Kanban UI turns into a "reload" banner. Proven by a 6-thread race test (exactly one winner) and a MockMvc lost-update test (the second write is refused and the first survives).
+- Cards may move between any two columns. A Kanban board is a shared picture of the work rather than a gated workflow, and teams regularly send a card from `REVIEW` back to `IN_PROGRESS`, so there is no transition validator.
+
+**Read path without N+1:** the board, member list and decision log are JPQL constructor projections (`TaskCardDto`, `PlaygroundMemberDto`, `DecisionDto`) that `LEFT JOIN` the user row. A board with any number of cards is one query, with no entity proxies or dirty-checking snapshots. Column grouping happens in Java because the status column is a string and would sort alphabetically in SQL.
+
+**Migration `V9__harden_playgrounds_and_kanban.sql`** (V3 is never edited; Member C owns V3, V6, V9):
+- `playgrounds.version` for metadata edits; `CHECK`s on `visibility`, `status`, member `role`, task `status` / `priority`, `position >= 0` and milestone `status` (`PENDING`, `COMPLETED`).
+- `project_tasks.position` (card order inside a column; existing rows are backfilled oldest-first) and `created_by`; `project_milestones.description` and `created_by`.
+- Indexes: `idx_pg_members_user` ("my playgrounds"), partial `idx_tasks_assignee`, `idx_milestones_playground_due`, `idx_decisions_playground_created`.
+- Verified against `db/seed/test_fixtures.sql`: the seeded playground, members and four tasks load cleanly on V1-V9.
+
+**Invitations are race-safe:** members are added with `INSERT ... ON CONFLICT ON CONSTRAINT uq_playground_user DO NOTHING`. A double-click or two leads inviting the same student gives one row and a clean `409`, never a `500`.
+
+**Not in Week 2 (by plan):** outbox events for `TASK_ASSIGNED` / `MILESTONE_REACHED`, marking milestones complete, linking an opportunity to a playground, and the shared team chat (`conversation_id`) are Week 3 and Week 6 work.
+
 ### 2.3 Study Circles & Campus Pulse
 - **Peer Study Sessions:** Scheduled sessions stored with UTC timestamps and rendered in local time; links to Member A's course offerings.
 - **Pomodoro Timer Widget:** Frontend circular countdown timer for focused revision sprints.
@@ -90,7 +135,7 @@ flowchart LR
 | Sprint / Week | Dates | Key Completed Tasks | Commits / PRs |
 |---|---|---|---|
 | **Week 1** | Nov 10 – Nov 20 | ✅ `V6` opportunity hardening migration; `Opportunity` / `OpportunityBookmark` entities, repositories & DTOs; Ranking Strategy Pattern (`deadline`, `recent`) with resolver; multi-facet browse API; detail, submit, moderator verify; idempotent race-safe bookmarks; 400 handling for malformed requests; 24 new tests | [PR #5](https://github.com/KUETcord/KUETcord/pull/5) (`feature/opportunities-contest-board`) |
-| **Week 2** | Nov 17 – Nov 23 | Playground & Task entities, `@Version` column, Kanban task CRUD APIs, 409 conflict handling | PR #10, PR #13 |
+| **Week 2** | Nov 17 – Nov 23 | ✅ `V9` playground/Kanban hardening migration; `Playground`, `PlaygroundMember`, `ProjectTask`, `ProjectMilestone`, `ProjectDecision` entities; `LEAD` / `CONTRIBUTOR` / `VIEWER` access policy (private playgrounds hidden with 404, archived playgrounds frozen); playground create / list / detail / PATCH / invite APIs; Kanban board + task CRUD with `@Version` optimistic locking mapped to 409; milestones and decision log endpoints; N+1-free projections; 38 new tests | `feature/playgrounds-kanban-board` |
 | **Week 3** | Nov 24 – Nov 30 | Study Circles, Sessions scheduler, Campus Pulse, Outbox event emitters (`TASK_ASSIGNED`) | PR #17, PR #20 |
 | **Week 4** | Dec 01 – Dec 07 | Frontend Contest directory with filters, Interactive Kanban Board (`@dnd-kit/core`) | PR #23, PR #26 |
 | **Week 5** | Dec 08 – Dec 14 | Study Circle Hub, Pomodoro widget, k6 load testing on task updates, N+1 query elimination | PR #30, PR #33 |
@@ -120,9 +165,15 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 | **Unit** | `OpportunitySpecificationsTest` (1) | `OpportunitySpecifications` | PASS | `%`, `_`, `\` in search text escaped |
 | **Integration (MockMvc + PostgreSQL)** | `OpportunityControllerIntegrationTest` (8) | `/api/v1/opportunities/**` | PASS | Submit stored `UNVERIFIED`; 400/401 on bad input; strategy toggle reorders; facet filters; idempotent bookmarks; moderator-only verify (403 for students); 404s; V6 `CHECK` constraint enforced |
 | **Concurrency / DB** | `OpportunityBookmarkConcurrencyIntegrationTest` (1) | `OpportunityService.bookmark` | PASS | 8 simultaneous bookmark calls: every call succeeds, exactly 1 row |
-| **Contract / Validation** | `TaskStateValidatorTest`| `TaskStateValidator` | Planned (Week 2) | Rejects illegal status transitions with 400 |
-| **Security / IDOR** | `PrivatePlaygroundAccessTest` | `GET /api/v1/playgrounds/{id}` | Planned (Week 2) | Non-member receives 403 Forbidden |
-| **Concurrency Testing** | `TaskOptimisticLockTest` | `PATCH /api/v1/playgrounds/{id}/tasks/{id}` | Planned (Week 2) | Stale version triggers 409 Conflict & banner |
+| **Unit / Roles** | `PlaygroundRoleTest` (9) | `PlaygroundRole.grants` | PASS | Full role x permission matrix: LEAD manages, CONTRIBUTOR edits the board, VIEWER only reads |
+| **Security / IDOR** | `PlaygroundAccessPolicyTest` (4) | `PlaygroundAccessPolicy` | PASS | Member roles applied; outsiders read PUBLIC only; PRIVATE answers the same 404 as a missing playground; ARCHIVED rejects writes with 409 |
+| **Contract / Validation** | `PlaygroundRequestValidationTest` (4) | Playground and task request DTOs | PASS | Tag limits and comma-free tags; http(s) links; mandatory `expectedVersion`; `assigneeId` + `clearAssignee` together rejected; defaults `BACKLOG` / `MEDIUM` |
+| **Unit** | `PlaygroundTagsTest` (2) | `PlaygroundService.normalizeTags`, `Playground.tagList` | PASS | Trim + case-insensitive de-dup; seed-format tag column round-trips |
+| **Integration (MockMvc + PostgreSQL)** | `PlaygroundControllerIntegrationTest` (8) | `/api/v1/playgrounds/**` | PASS | Creator becomes LEAD; PRIVATE is 404 to outsiders; LEAD-only invites with 409 on duplicate; stale PATCH 409; archive freezes writes until reopened; 400 validation; V9 `CHECK`s enforced |
+| **Integration / Concurrency contract** | `ProjectTaskControllerIntegrationTest` (7) | `/api/v1/playgrounds/{id}/tasks/**` | PASS | 5 ordered columns with positions and assignee names; move + assign bumps version; **lost update refused with 409 and the first write survives**; assignee rules; VIEWER read-only; cross-playground task id 404; versioned delete |
+| **Integration** | `ProjectJournalControllerIntegrationTest` (3) | `/milestones`, `/decisions` | PASS | Milestones soonest first with `overdue`; decision log newest first with author; VIEWER cannot write |
+| **Concurrency / DB** | `ProjectTaskConcurrencyIntegrationTest` (1) | `ProjectTaskService.update` | PASS | 6 simultaneous moves of one card from version 0: exactly one wins, all others get optimistic-lock errors, final version 1 |
+| **Local full suite** | `mvn test` on PostgreSQL 16 | Whole backend | PASS | `Tests run: 142, Failures: 0, Errors: 0, Skipped: 0` |
 | **Integration Testing** | `OutboxTaskEmitterTest` | `TaskService.assignTask` | Planned (Week 3) | Outbox row created in same atomic transaction |
 | **Integration / Relation**| `OpportunityLinkTest` | `POST /api/v1/opportunities/{id}/playgrounds` | Planned (Week 3) | Join table `opportunity_playgrounds` populated |
 | **Performance & Load** | `k6_kanban_read.js` | `GET /api/v1/playgrounds/{id}/tasks` | Planned (Week 5) | p95: 32ms at 40 VUs; zero N+1 queries |
@@ -141,6 +192,10 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
   - *Context:* students switch between "Nearest Deadline" and "Recently Published", and a relevance ranking is planned.
   - *Decision:* one `OpportunityRankingStrategy` bean per rule, chosen by key through `OpportunityRankingStrategyResolver`. Filtering stays in SQL (`Specification`s); ordering happens in Java over a bounded 500-row window.
   - *Consequences:* each rule is a pure class tested without Spring or a database, and adding a rule touches no existing code. The trade-off is the window: if more than 500 listings match, the response reports `truncated: true` and the client narrows its filters. A campus board stays far below that.
+- **ADR-010:** Optimistic Locking with a Client-Supplied `expectedVersion` for Kanban Cards.
+  - *Context:* teammates drag and re-assign the same cards during a hackathon. Last-write-wins silently loses an assignee or a status change; pessimistic `SELECT ... FOR UPDATE` would hold row locks across user think-time and does not fit stateless REST.
+  - *Decision:* `@Version` on `project_tasks` and `playgrounds`. Every `PATCH` / `DELETE` must send the version the client last saw; a mismatch is rejected before any change, and a true race is caught by the versioned `UPDATE`. Both become `409 Conflict`.
+  - *Consequences:* no locks are held between requests and no write is lost. The cost is that a client must reload and retry on 409, which the Week 4 UI handles with a reload banner. Making `expectedVersion` mandatory (400 when missing) means no client can opt out by accident.
 
 ---
 
