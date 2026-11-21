@@ -297,9 +297,19 @@ Endpoint: `/ws` (SockJS) or `/ws/websocket` (native WebSocket). Origins follow `
 - `POST /api/v1/opportunities/{id}/playgrounds` — Link contest to Playground *(Week 3)*
 
 ### Project Playgrounds & Study Circles (Member C)
-- `GET/POST /api/v1/playgrounds` — List or create project playgrounds (RBAC: `LEAD`, `CONTRIBUTOR`, `VIEWER`)
-- `GET/POST /api/v1/playgrounds/{id}/tasks` — View or create Kanban tasks
-- `PATCH /api/v1/playgrounds/{id}/tasks/{taskId}` — Move/update task (with `@Version` conflict detection)
+- `GET /api/v1/playgrounds` — "My playgrounds" with `myRole` and `memberCount`
+- `POST /api/v1/playgrounds` — Create a playground (`title`, `problemStatement`, `tags` (max 8), `visibility` `PUBLIC`/`PRIVATE`, `repoUrl`, `demoUrl`); the creator becomes `LEAD`; returns `201`
+- `GET /api/v1/playgrounds/{id}` — Workspace header: members, per-column task counts, `version` (members; anyone for `PUBLIC`; a `PRIVATE` playground is `404` to non-members)
+- `PATCH /api/v1/playgrounds/{id}` — Edit metadata / `status` (`PLANNING`, `IN_PROGRESS`, `COMPLETED`, `ARCHIVED`); `LEAD` only; requires `expectedVersion` (stale: `409`)
+- `POST /api/v1/playgrounds/{id}/members` — Invite a student as `LEAD` / `CONTRIBUTOR` / `VIEWER` (`LEAD` only; already a member: `409`)
+- `GET /api/v1/playgrounds/{id}/tasks` — Kanban board: 5 ordered columns (`BACKLOG`, `TODO`, `IN_PROGRESS`, `REVIEW`, `DONE`) with card `position`, `assignee`, `version`
+- `POST /api/v1/playgrounds/{id}/tasks` — Create a task (`LEAD` / `CONTRIBUTOR`; `status` default `BACKLOG`, `priority` `LOW`..`CRITICAL` default `MEDIUM`, `assigneeId`, `dueDate`)
+- `GET /api/v1/playgrounds/{id}/tasks/{taskId}` — Task detail
+- `PATCH /api/v1/playgrounds/{id}/tasks/{taskId}` — Move / assign / edit a task; requires `expectedVersion`; `clearAssignee`, `clearDueDate`; stale or concurrent change: `409 Conflict`
+- `DELETE /api/v1/playgrounds/{id}/tasks/{taskId}?expectedVersion=n` — Delete a task (`204`; stale version: `409`)
+- `GET/POST /api/v1/playgrounds/{id}/milestones` — Project timeline, soonest first, with derived `overdue`
+- `GET/POST /api/v1/playgrounds/{id}/decisions` — Append-only decision log, newest first
+- Writes to an `ARCHIVED` playground return `409` until a lead reopens it
 - `GET/POST /api/v1/study-circles` — Browse or create peer study circles (`HOST`, `ATTENDEE`)
 - `GET/POST /api/v1/announcements` — Browse or publish Campus Pulse notices
 
