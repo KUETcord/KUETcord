@@ -14,9 +14,9 @@ import java.util.Optional;
 public interface CtEventRepository extends JpaRepository<CtEvent, Long>, JpaSpecificationExecutor<CtEvent> {
 
     @Override
-    @EntityGraph(attributePaths = {"courseOffering", "submittedBy", "verifiedBy"})
+    @EntityGraph(attributePaths = {"courseOffering", "submittedBy", "verifiedBy", "assignedTeacher"})
     List<CtEvent> findAll(@Nullable Specification<CtEvent> spec, Sort sort);
 
-    @EntityGraph(attributePaths = {"courseOffering", "submittedBy", "verifiedBy"})
+    @EntityGraph(attributePaths = {"courseOffering", "submittedBy", "verifiedBy", "assignedTeacher"})
     Optional<CtEvent> findWithDetailsById(Long id);
 }

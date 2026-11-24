@@ -49,11 +49,11 @@ public record UserSummaryDto(
 
     private static int rolePriority(RoleName roleName) {
         return switch (roleName) {
-            case ROLE_ADMIN -> 4;
-            case ROLE_MODERATOR -> 3;
+            case ROLE_ADMIN -> 5;
+            case ROLE_MODERATOR -> 4;
+            case ROLE_TEACHER -> 3;
             case ROLE_CR -> 2;
             case ROLE_STUDENT -> 1;
         };
     }
 }
-

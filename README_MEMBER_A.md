@@ -27,13 +27,13 @@ flowchart LR
 ## 2. Deep-Dive Feature Documentation
 
 ### 2.1 Institutional Identity & Authentication
-- **Institutional Gate:** Backend strictly enforces `@stud.kuet.ac.bd` domain on both Google ID tokens and local registrations.
+- **Institutional Gate:** Backend strictly enforces KUET student (`@stud.kuet.ac.bd`) and faculty (`@kuet.ac.bd`, `@<dept>.kuet.ac.bd`) domains on both Google ID tokens and local registrations; faculty accounts automatically receive `ROLE_TEACHER`.
 - **BCrypt Password Hashing:** Local passwords salted and hashed with work factor $12$.
 - **Verification Tokens:** Cryptographically random single-use tokens; only SHA-256 hashes stored in `email_verification_tokens`. Local accounts cannot log in before verification.
 - **Token Bucket Rate Limiting:** `RateLimitingFilter` enforces 10 req/min on `/api/v1/auth/login` to prevent brute force.
 
 ### 2.2 CT Hub (Class Test Planning & Concurrency)
-- **State Pattern Lifecycle:** `UNVERIFIED` $\rightarrow$ `VERIFIED` $\rightarrow$ `RESCHEDULED` / `CANCELLED`. Only CRs/Moderators can verify.
+- **State Pattern Lifecycle & Teacher Approval (`V10`):** `UNVERIFIED` $\rightarrow$ `VERIFIED` $\rightarrow$ `RESCHEDULED` / `CANCELLED`. CRs propose CTs by searching active `ROLE_TEACHER` accounts (`GET /api/v1/ct/teachers?q=`), emitting `CT_APPROVAL_REQUESTED` outbox + email alerts; only the assigned Teacher (or Moderator/Admin) can approve; both CRs and assigned Teachers can reschedule/cancel with automatic teacher notifications.
 - **Optimistic Concurrency Control:** `ct_events.version` column prevents simultaneous reschedule overwrites, returning HTTP `409 Conflict`.
 - **Course Follows:** Course followers automatically receive notifications when CTs are verified or rescheduled via transactional outbox rows.
 

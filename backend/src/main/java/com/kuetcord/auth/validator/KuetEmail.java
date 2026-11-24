@@ -19,7 +19,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface KuetEmail {
 
-    String message() default "Email must be a valid KUET institutional address (@stud.kuet.ac.bd)";
+    String message() default "Email must be a valid KUET institutional address (@stud.kuet.ac.bd, @kuet.ac.bd, or @<dept>.kuet.ac.bd)";
 
     Class<?>[] groups() default {};
 

@@ -70,6 +70,10 @@ public class CtEvent {
     @JoinColumn(name = "verified_by")
     private User verifiedBy;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_teacher_id")
+    private User assignedTeacher;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;

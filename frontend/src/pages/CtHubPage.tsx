@@ -15,8 +15,10 @@ import { extractErrorMessage, useAuth } from '../context/AuthContext';
 import {
   DEMO_COURSES,
   DEMO_CT_EVENTS,
+  DEMO_TEACHERS,
   WORST_CASE_COURSES,
   WORST_CASE_CT_EVENTS,
+  WORST_CASE_TEACHERS,
   type DataFixtureMode,
 } from '../fixtures/ctHubFixtures';
 import { ApiError, ctHubApi } from '../lib/api';
@@ -32,7 +34,7 @@ const STATUS_OPTIONS: Array<{ value: '' | CtStatus; label: string }> = [
 ];
 
 export function CtHubPage() {
-  const { user, isDemoMode, canModerateCt } = useAuth();
+  const { user, isDemoMode, canProposeCt, canApproveCt, canRescheduleOrCancelCt } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const urlFixture = (searchParams.get('data') as DataFixtureMode | null) ?? 'demo';
@@ -55,6 +57,8 @@ export function CtHubPage() {
   const [cancelTarget, setCancelTarget] = useState<CtEventSummary | null>(null);
   const [verifyingId, setVerifyingId] = useState<number | null>(null);
   const [conflictBanner, setConflictBanner] = useState<string | null>(null);
+
+  const demoTeachers = fixtureMode === 'worst' ? WORST_CASE_TEACHERS : DEMO_TEACHERS;
 
   const loadData = useCallback(async () => {
     if (isDemoMode) {
@@ -121,7 +125,8 @@ export function CtHubPage() {
         return (
           ev.title.toLowerCase().includes(q) ||
           ev.courseCode.toLowerCase().includes(q) ||
-          ev.courseTitle.toLowerCase().includes(q)
+          ev.courseTitle.toLowerCase().includes(q) ||
+          (ev.assignedTeacherName?.toLowerCase().includes(q) ?? false)
         );
       }
       return true;
@@ -152,7 +157,6 @@ export function CtHubPage() {
         toast(`Unfollowed ${course.courseCode}`);
       }
     } catch (err) {
-      // Revert optimistic toggle on failure
       setCourses((prev) =>
         prev.map((c) => (c.id === course.id ? { ...c, followed: !nextFollowed } : c)),
       );
@@ -162,6 +166,8 @@ export function CtHubPage() {
 
   const handleCreateEvent = async (payload: {
     courseOfferingId: number;
+    teacherId: number;
+    teacherName: string;
     title: string;
     scheduledAt: string;
     durationMinutes: number;
@@ -179,8 +185,10 @@ export function CtHubPage() {
         durationMinutes: payload.durationMinutes,
         coveredTopics: payload.coveredTopics ?? null,
         status: 'UNVERIFIED',
-        submittedById: user?.id ?? 1,
-        submittedByName: user?.displayName ?? 'KUET Student',
+        submittedById: user?.id ?? 2,
+        submittedByName: user?.displayName ?? 'Karim Rahman',
+        assignedTeacherId: payload.teacherId,
+        assignedTeacherName: payload.teacherName,
         verifiedById: null,
         verifiedByName: null,
         version: 0,
@@ -188,13 +196,20 @@ export function CtHubPage() {
         updatedAt: new Date().toISOString(),
       };
       setEvents((prev) => [newEvent, ...prev]);
-      toast.success('CT schedule proposed (UNVERIFIED)');
+      toast.success(`CT proposed and ${payload.teacherName} notified for approval`);
       return;
     }
 
-    const created = await ctHubApi.createEvent(payload);
+    const created = await ctHubApi.createEvent({
+      courseOfferingId: payload.courseOfferingId,
+      teacherId: payload.teacherId,
+      title: payload.title,
+      scheduledAt: payload.scheduledAt,
+      durationMinutes: payload.durationMinutes,
+      coveredTopics: payload.coveredTopics,
+    });
     setEvents((prev) => [created, ...prev]);
-    toast.success('CT schedule proposed (UNVERIFIED)');
+    toast.success(`CT proposed and ${payload.teacherName} notified for approval`);
   };
 
   const handleVerify = async (event: CtEventSummary) => {
@@ -207,26 +222,26 @@ export function CtHubPage() {
               ? {
                   ...e,
                   status: 'VERIFIED',
-                  verifiedById: user?.id ?? 2,
-                  verifiedByName: user?.displayName ?? 'Karim Rahman',
+                  verifiedById: user?.id ?? 10,
+                  verifiedByName: user?.displayName ?? 'Prof. Dr. Hasan Mahmud',
                   version: e.version + 1,
                 }
               : e,
           ),
         );
-        toast.success(`Verified ${event.courseCode}: ${event.title}`);
+        toast.success(`Approved ${event.courseCode}: ${event.title}`);
         return;
       }
 
       const updated = await ctHubApi.verifyEvent(event.id, event.version);
       setEvents((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-      toast.success('CT schedule verified by CR');
+      toast.success('CT schedule approved by course teacher');
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        toast.error('Schedule was updated concurrently by another CR. Reloading latest data.');
+        toast.error('Schedule was updated concurrently. Reloading latest data.');
         await loadData();
       } else {
-        toast.error(extractErrorMessage(err, 'Failed to verify CT schedule'));
+        toast.error(extractErrorMessage(err, 'Failed to approve CT schedule'));
       }
     } finally {
       setVerifyingId(null);
@@ -238,6 +253,11 @@ export function CtHubPage() {
     payload: { newScheduledAt: string; reason: string; expectedVersion: number },
   ) => {
     setConflictBanner(null);
+    const notifyNote =
+      user?.globalRole === 'CR' && event.assignedTeacherName
+        ? ` — ${event.assignedTeacherName} notified`
+        : '';
+
     try {
       if (isDemoMode) {
         setEvents((prev) =>
@@ -252,19 +272,19 @@ export function CtHubPage() {
               : e,
           ),
         );
-        toast.success(`Rescheduled ${event.courseCode} to new time`);
+        toast.success(`Rescheduled ${event.courseCode}${notifyNote}`);
         setRescheduleTarget(null);
         return;
       }
 
       const updated = await ctHubApi.rescheduleEvent(event.id, payload);
       setEvents((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-      toast.success('CT schedule rescheduled and followers notified');
+      toast.success(`CT schedule rescheduled${notifyNote}`);
       setRescheduleTarget(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setConflictBanner(
-          'Schedule was modified concurrently by another CR (HTTP 409 Conflict). Reload the latest version before applying changes.',
+          'Schedule was modified concurrently (HTTP 409 Conflict). Reload the latest version before applying changes.',
         );
         toast.error('Version conflict (409): reload required');
       } else {
@@ -277,6 +297,11 @@ export function CtHubPage() {
     event: CtEventSummary,
     payload: { reason: string; expectedVersion: number },
   ) => {
+    const notifyNote =
+      user?.globalRole === 'CR' && event.assignedTeacherName
+        ? ` — ${event.assignedTeacherName} notified`
+        : '';
+
     try {
       if (isDemoMode) {
         setEvents((prev) =>
@@ -284,14 +309,14 @@ export function CtHubPage() {
             e.id === event.id ? { ...e, status: 'CANCELLED', version: e.version + 1 } : e,
           ),
         );
-        toast('CT event marked as CANCELLED');
+        toast(`CT event cancelled${notifyNote}`);
         setCancelTarget(null);
         return;
       }
 
       const updated = await ctHubApi.cancelEvent(event.id, payload);
       setEvents((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-      toast('CT event cancelled and followers notified');
+      toast(`CT event cancelled${notifyNote}`);
       setCancelTarget(null);
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to cancel CT'));
@@ -314,19 +339,21 @@ export function CtHubPage() {
             Class Test Hub
           </h2>
           <p className="mt-1 max-w-[65ch] text-sm leading-relaxed text-slate-400">
-            Track verified KUET course Class Tests, follow courses for outbox alerts, and manage reschedules with optimistic concurrency protection.
+            CRs propose Class Tests and assign course teachers; teachers approve schedules and receive automatic notifications on updates.
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setProposeOpen(true)}
-          disabled={courses.length === 0}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-950/50 transition-colors duration-150 ease-out hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
-        >
-          <CalendarPlus className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>Propose CT</span>
-        </button>
+        {canProposeCt && (
+          <button
+            type="button"
+            onClick={() => setProposeOpen(true)}
+            disabled={courses.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-950/50 transition-colors duration-150 ease-out hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+          >
+            <CalendarPlus className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>Propose CT</span>
+          </button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -343,7 +370,7 @@ export function CtHubPage() {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search course code, title, or topic..."
+            placeholder="Search course code, title, or teacher..."
             className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
           />
         </div>
@@ -478,16 +505,18 @@ export function CtHubPage() {
               No upcoming Class Tests scheduled
             </h4>
             <p className="mx-auto mt-1.5 max-w-[48ch] text-xs leading-relaxed text-slate-400">
-              Follow a course above to receive instant alerts when CRs verify new schedules, or propose a Class Test right now.
+              Follow a course above to receive instant alerts when course teachers approve new schedules.
             </p>
-            <button
-              type="button"
-              onClick={() => setProposeOpen(true)}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-500"
-            >
-              <CalendarPlus className="h-3.5 w-3.5 shrink-0" />
-              <span>Propose First CT</span>
-            </button>
+            {canProposeCt && (
+              <button
+                type="button"
+                onClick={() => setProposeOpen(true)}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-500"
+              >
+                <CalendarPlus className="h-3.5 w-3.5 shrink-0" />
+                <span>Propose First CT</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -495,7 +524,10 @@ export function CtHubPage() {
               <CtEventCard
                 key={ev.id}
                 event={ev}
-                canModerate={canModerateCt}
+                currentUserId={user?.id ?? null}
+                currentUserRole={user?.globalRole ?? null}
+                canApprove={canApproveCt}
+                canRescheduleOrCancel={canRescheduleOrCancelCt}
                 verifyingId={verifyingId}
                 onVerify={handleVerify}
                 onOpenReschedule={(target) => {
@@ -514,6 +546,8 @@ export function CtHubPage() {
         open={proposeOpen}
         onOpenChange={setProposeOpen}
         courses={courses}
+        demoTeachers={demoTeachers}
+        isDemoMode={isDemoMode}
         onSubmit={handleCreateEvent}
       />
 
@@ -543,7 +577,7 @@ export function CtHubPage() {
         onSubmit={handleCancel}
       />
 
-      {/* Dev-Only break-ui Fixture Switcher (Hard Rule 4: never ships to production) */}
+      {/* Dev-Only break-ui Fixture Switcher */}
       {import.meta.env.DEV && isDemoMode && (
         <div
           role="group"

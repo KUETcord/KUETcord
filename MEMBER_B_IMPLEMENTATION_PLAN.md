@@ -640,6 +640,7 @@ npm run test -- VirtualizedChatFeed.test.tsx NotificationBell.test.tsx
 ### What Member B Provides to A and C
 1. **Shared Conversation Model:** Member C uses Member B's `conversation_id` for Project Playgrounds and Study Circles (`POST /api/v1/conversations/group` or shared entity link).
 2. **Notification Pipeline & Outbox Worker:** Member A (CT Hub) and Member C (Playgrounds/Contests) write rows to `outbox_events`. Member B's worker polls, applies recipient preferences, and pushes notifications.
+   - **Member A CT Hub Outbox Contract (Flyway `V10`):** In addition to `CT_VERIFIED`, `CT_RESCHEDULED`, and `CT_CANCELLED` (broadcast to `followerUserIds`), Member A emits **`CT_APPROVAL_REQUESTED`** (`aggregate_type = "CT_EVENT"`, payload containing `teacherId`, `teacherEmail`, `ctEventId`, `courseCode`, `title`, `scheduledAt`, `submittedByName`) when a CR proposes a CT, and sets `notifyTeacher: true` + `teacherId` on CR-triggered `CT_RESCHEDULED` / `CT_CANCELLED` events so the assigned teacher receives a persistent notification (`recipient_id = teacherId`). Note: Flyway `V10` is reserved by Member A; use `V11+` for new migrations.
 3. **Presence Status:** Member A and C can display live user presence pills (`ONLINE` / `OFFLINE`) on student cards and project member lists.
 
 ### What Member B Consumes from A and C

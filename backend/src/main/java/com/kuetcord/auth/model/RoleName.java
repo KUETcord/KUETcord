@@ -6,7 +6,7 @@ package com.kuetcord.auth.model;
 public enum RoleName {
     ROLE_STUDENT,
     ROLE_CR,
+    ROLE_TEACHER,
     ROLE_MODERATOR,
     ROLE_ADMIN
 }
-

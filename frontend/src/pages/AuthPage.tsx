@@ -8,7 +8,7 @@ import { cn } from '../lib/format';
 
 type AuthTab = 'login' | 'register' | 'verify';
 
-const KUET_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@stud\.kuet\.ac\.bd$/i;
+const KUET_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@([a-zA-Z0-9-]+\.)?kuet\.ac\.bd$/i;
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
@@ -69,7 +69,7 @@ export function AuthPage() {
     setErrorMsg(null);
 
     if (!KUET_EMAIL_REGEX.test(regEmail.trim())) {
-      const msg = 'Email must belong strictly to @stud.kuet.ac.bd';
+      const msg = 'Email must belong to KUET (@stud.kuet.ac.bd, @kuet.ac.bd, or @<dept>.kuet.ac.bd)';
       setErrorMsg(msg);
       toast.error(msg);
       return;
@@ -130,7 +130,7 @@ export function AuthPage() {
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-white">KUET Institutional Access</h2>
         <p className="mt-1.5 text-xs text-slate-400">
-          Restricted to verified <span className="font-mono text-emerald-400">@stud.kuet.ac.bd</span> accounts.
+          Restricted to verified KUET student (<span className="font-mono text-emerald-400">@stud.kuet.ac.bd</span>) and faculty (<span className="font-mono text-emerald-400">@&lt;dept&gt;.kuet.ac.bd</span>) accounts.
         </p>
       </div>
 

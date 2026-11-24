@@ -9,8 +9,8 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 /**
- * Sends institutional verification emails via Spring JavaMailSender (Mailpit in local dev).
- * Gracefully degrades to structured logging when SMTP transport is disabled in test profiles.
+ * Sends institutional verification and CT Hub notification emails via Spring JavaMailSender
+ * (Mailpit in local dev). Gracefully degrades to structured logging when SMTP transport is disabled.
  */
 @Slf4j
 @Service
@@ -28,9 +28,36 @@ public class EmailDispatchService {
 
     public void sendVerificationEmail(String recipientEmail, String displayName, String rawToken) {
         String verificationLink = frontendUrl + "/verify-email?token=" + rawToken;
+        String body = """
+                Hello %s,
 
+                Welcome to KUETcord! Please verify your KUET institutional email address using the link below (valid for 15 minutes):
+
+                %s
+
+                If you did not create a KUETcord account, you can safely ignore this message.
+                """.formatted(displayName, verificationLink);
+
+        sendEmail(recipientEmail, "Verify your KUETcord institutional email", body);
+    }
+
+    public void sendTeacherCtNotificationEmail(String teacherEmail, String teacherName, String subject, String details) {
+        String ctHubLink = frontendUrl + "/ct-hub";
+        String body = """
+                Hello %s,
+
+                %s
+
+                Review and manage this Class Test in KUETcord CT Hub:
+                %s
+                """.formatted(teacherName, details, ctHubLink);
+
+        sendEmail(teacherEmail, subject, body);
+    }
+
+    private void sendEmail(String recipientEmail, String subject, String body) {
         if (mailSender == null) {
-            log.info("SMTP transport unavailable; verification token issued for {}", recipientEmail);
+            log.info("SMTP transport unavailable; email [{}] logged for {}", subject, recipientEmail);
             return;
         }
 
@@ -38,21 +65,11 @@ public class EmailDispatchService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom("noreply@kuetcord.local");
             message.setTo(recipientEmail);
-            message.setSubject("Verify your KUETcord institutional email");
-            message.setText("""
-                    Hello %s,
-
-                    Welcome to KUETcord! Please verify your @stud.kuet.ac.bd email address using the link below (valid for 15 minutes):
-
-                    %s
-
-                    If you did not create a KUETcord account, you can safely ignore this message.
-                    """.formatted(displayName, verificationLink));
+            message.setSubject(subject);
+            message.setText(body);
             mailSender.send(message);
         } catch (MailException ex) {
-            // Do not fail registration transaction if local Mailpit isn't running during tests
-            log.warn("Could not deliver verification email to {}: {}", recipientEmail, ex.getMessage());
+            log.warn("Could not deliver email [{}] to {}: {}", subject, recipientEmail, ex.getMessage());
         }
     }
 }
-

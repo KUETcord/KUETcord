@@ -68,7 +68,10 @@ public class GoogleAuthService {
     private User findOrCreateUser(String normalizedEmail, GoogleTokenPayload payload) {
         return userRepository.findByEmailIgnoreCase(normalizedEmail)
                 .orElseGet(() -> {
-                    Role studentRole = accountProvisioner.requireStudentRole();
+                    Role initialRole = accountProvisioner.requireRole(
+                            emailDomainValidator.isFacultyEmail(normalizedEmail)
+                                    ? com.kuetcord.auth.model.RoleName.ROLE_TEACHER
+                                    : com.kuetcord.auth.model.RoleName.ROLE_STUDENT);
                     String displayName = (payload.name() != null && !payload.name().isBlank())
                             ? payload.name().trim()
                             : normalizedEmail;
@@ -82,7 +85,7 @@ public class GoogleAuthService {
                             .username(accountProvisioner.deriveUniqueUsername(normalizedEmail))
                             .emailVerifiedAt(Instant.now())
                             .status(UserStatus.ACTIVE)
-                            .roles(new HashSet<>(Set.of(studentRole)))
+                            .roles(new HashSet<>(Set.of(initialRole)))
                             .build();
                     return userRepository.save(newUser);
                 });

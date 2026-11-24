@@ -218,7 +218,7 @@ FRONTEND_URL=http://localhost:5173
 ## 6. Central API Route Index
 
 ### Authentication & Profile (Member A)
-- `POST /api/v1/auth/register` — Register with `@stud.kuet.ac.bd` email & password
+- `POST /api/v1/auth/register` — Register with KUET student (`@stud.kuet.ac.bd`) or faculty (`@kuet.ac.bd` / `@<dept>.kuet.ac.bd`) email & password
 - `POST /api/v1/auth/login` — Authenticate and receive JWT (blocked if unverified)
 - `POST /api/v1/auth/verify-email` — Consume single-use email verification token
 - `POST /api/v1/auth/resend-verification` — Resend institutional email verification token (rate-limited: 2 req/min)
@@ -228,13 +228,14 @@ FRONTEND_URL=http://localhost:5173
 
 ### CT Hub (Member A)
 - `GET /api/v1/ct/courses` — Browse available courses by department/semester/year/query (Caffeine L1 cached) ✅
-- `POST /api/v1/ct/courses` — Create course offering (`ROLE_CR`, `ROLE_MODERATOR`, `ROLE_ADMIN`) ✅
+- `POST /api/v1/ct/courses` — Create course offering (`ROLE_CR`, `ROLE_TEACHER`, `ROLE_MODERATOR`, `ROLE_ADMIN`) ✅
+- `GET /api/v1/ct/teachers?q=&department=` — Search active KUET course teachers (`ROLE_TEACHER`) by name or email ✅
 - `GET /api/v1/ct/events` — Query CT calendar and schedules (`courseId`, `status`, `from`, `to`) ✅
-- `POST /api/v1/ct/events` — Submit proposed CT entry (`UNVERIFIED`) ✅
+- `POST /api/v1/ct/events` — Propose CT entry (`UNVERIFIED`) assigned to a Teacher (`CR`/`TEACHER`/`MOD`/`ADMIN`), emitting `CT_APPROVAL_REQUESTED` outbox + teacher email ✅
 - `GET /api/v1/ct/events/{id}` — Retrieve CT details & change history (SingleFlight request coalesced) ✅
-- `POST /api/v1/ct/events/{id}/verify` — Transition CT to `VERIFIED` via State Pattern (CR/Mod/Admin) ✅
-- `POST /api/v1/ct/events/{id}/reschedule` — Reschedule CT with `@Version` optimistic locking & atomic outbox ✅
-- `POST /api/v1/ct/events/{id}/cancel` — Cancel CT with `@Version` check & terminal state lock (CR/Mod/Admin) ✅
+- `POST /api/v1/ct/events/{id}/verify` — Approve CT to `VERIFIED` via State Pattern (assigned `TEACHER`/`MOD`/`ADMIN`) ✅
+- `POST /api/v1/ct/events/{id}/reschedule` — Reschedule CT with `@Version` optimistic locking & atomic outbox (`CR`/`TEACHER`/`MOD`/`ADMIN`; notifies assigned teacher when rescheduled by CR) ✅
+- `POST /api/v1/ct/events/{id}/cancel` — Cancel CT with `@Version` check & terminal state lock (`CR`/`TEACHER`/`MOD`/`ADMIN`; notifies assigned teacher when cancelled by CR) ✅
 - `POST /api/v1/ct/courses/{id}/follow` — Follow course to receive CT alerts ✅
 - `DELETE /api/v1/ct/courses/{id}/follow` — Unfollow course ✅
 
