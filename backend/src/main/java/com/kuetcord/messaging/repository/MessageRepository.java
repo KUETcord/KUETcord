@@ -40,5 +40,14 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
                                  @Param("beforeId") Long beforeId,
                                  Pageable pageable);
 
+    /**
+     * Reconnect gap catch-up: everything strictly newer than the client's last seen ID, oldest first.
+     * Single index range scan on idx_messages_sync (conversation_id, id ASC).
+     */
+    @Query("SELECT m FROM Message m WHERE m.conversationId = :conversationId AND m.id > :afterId ORDER BY m.id ASC")
+    List<Message> findPageAfter(@Param("conversationId") Long conversationId,
+                                @Param("afterId") Long afterId,
+                                Pageable pageable);
+
     boolean existsByIdAndConversationId(Long id, Long conversationId);
 }

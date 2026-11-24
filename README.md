@@ -120,7 +120,7 @@ KUETcord implements both System-Level Authorities and Discord-Style Contextual R
 | **Identity & Security** | Member A | Institutional domain validation (`@stud.kuet.ac.bd`), Google Sign-In (OIDC), BCrypt local password hashing, Token Bucket rate limiting. |
 | **CT Hub (Class Tests)** | Member A | Academic test planning, course follows, CR verification workflow (**State Pattern**), JPA `@Version` concurrency control. |
 | **Campus Commons & Chat** | Member B | Community channels, direct DMs, group DMs (3+ users), cursor pagination, client idempotency deduplication. |
-| **Real-Time Resilience** | Member B | STOMP bidirectional heartbeats (10s/10s), dead-socket eviction (25s), exponential backoff reconnection, gap catch-up sync (`/sync`), multi-tab presence (`/topic/presence`), debounced typing indicators. |
+| **Real-Time Resilience** | Member B | STOMP bidirectional heartbeats (10s/10s), dead-socket eviction (≤ 30s: 3 missed heartbeats), exponential backoff reconnection, gap catch-up sync (`/sync`), multi-tab presence (`/topic/presence`), debounced typing indicators. |
 | **Notification Center** | Member B | Persistent inbox, unread counts, Notify/Mute preferences (**Strategy Pattern**), transactional outbox worker (`SKIP LOCKED`). |
 | **Contest & Challenge Board** | Member C | Hackathons, robotics, coding contests (strictly separated from CT Hub), bookmarking, ranking (**Strategy Pattern**). |
 | **Project Playgrounds** | Member C | Workspaces, team roles, Kanban board (`TODO` $\rightarrow$ `DONE`) with **`@Version` Optimistic Concurrency**, milestones, decision logs. |
@@ -266,7 +266,9 @@ Server permission bitmask (`community_roles.permissions`): `SEND_MESSAGES=1`, `M
 - `GET /api/v1/conversations/{id}/messages?cursor=&limit=` — Keyset-paginated history (default 30, max 100; page returned oldest-first, pass `nextCursor` for older) ✅
 - `POST /api/v1/conversations/{id}/read-state` — Move last-read marker forward (monotonic) and get remaining `unreadCount` ✅
 - `GET /api/v1/conversations` now includes `unreadCount` per conversation ✅
-- `GET /api/v1/conversations/{id}/sync` — Reconnection gap catch-up sync — *Phase 3*
+- `GET /api/v1/conversations/{id}/sync?afterMessageId=&limit=` — Reconnect gap catch-up: messages strictly newer than `afterMessageId`, oldest first (default 50, max 200, `hasMore`) ✅
+- `GET /api/v1/users/presence?ids=1,2,3` — Presence snapshot (`ONLINE`/`IDLE`/`OFFLINE`, max 200 ids, in-memory) ✅
+- Frontend: `/messaging` route — live chat (reconnect backoff + `/sync`, optimistic send, virtualized feed); demo fixtures via `?data=demo|worst|empty|one|huge` ✅
 
 ### Real-Time WebSocket / STOMP Contract (Member B)
 Endpoint: `/ws` (SockJS) or `/ws/websocket` (native WebSocket). Origins follow `ALLOWED_ORIGINS`. Every frame below is authorized server-side; anything not listed is rejected with a STOMP `ERROR`.
@@ -278,8 +280,9 @@ Endpoint: `/ws` (SockJS) or `/ws/websocket` (native WebSocket). Origins follow `
 | `RECEIPT` | (to sender) | `receipt-id: msg-<uuid>`, sent only after the DB commit; a retry with the same key is ACKed but not re-broadcast ✅ |
 | `SUBSCRIBE` | `/topic/conversations/{id}` | Members only (`ConversationAccessPolicy`). Receives `ChatMessageDto` ✅ |
 | `SUBSCRIBE` | `/user/queue/errors` | Private rejections: `{ code, message, receiptId }` so the UI can mark that bubble FAILED ✅ |
-| `SEND` / `SUBSCRIBE` | `/app/conversations/{id}/typing`, `/topic/conversations/{id}/typing` | Members only — handler in *Phase 3* |
-| `SUBSCRIBE` | `/topic/presence` | Any authenticated user — publisher in *Phase 3* |
+| `SEND` / `SUBSCRIBE` | `/app/conversations/{id}/typing`, `/topic/conversations/{id}/typing` | Members only. Client debounces to 1 ping/3 s, server throttles 2 s/user; event `{ conversationId, userId, timestamp }`, receiver clears after 4 s. No DB writes ✅ |
+| `SUBSCRIBE` | `/topic/presence` | Any authenticated user. `{ userId, status: ONLINE\|IDLE\|OFFLINE, timestamp }` on transitions only (multi-tab aware) ✅ |
+| `SEND` | `/app/presence` | `{ "status": "IDLE" \| "ONLINE" }` from tab visibility; affects only the sender's own session ✅ |
 | `SUBSCRIBE` | `/user/queue/notifications` | Own queue only — publisher in *Phase 4* |
 
 ### Notification Center (Member B)

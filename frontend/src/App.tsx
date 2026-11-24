@@ -2,8 +2,10 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AppShell } from './components/layout/AppShell';
 import { AuthProvider } from './context/AuthContext';
+import { RealtimeProvider } from './context/RealtimeContext';
 import { AuthPage } from './pages/AuthPage';
 import { CtHubPage } from './pages/CtHubPage';
+import { MessagingPage } from './pages/MessagingPage';
 import { ModuleSlotPage } from './pages/ModuleSlotPage';
 import { OverviewPage } from './pages/OverviewPage';
 
@@ -15,16 +17,7 @@ export function AppRoutes() {
         <Route path="/ct-hub" element={<CtHubPage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/verify-email" element={<AuthPage />} />
-        <Route
-          path="/messaging"
-          element={
-            <ModuleSlotPage
-              title="Core Messaging & Communities"
-              owner="Member B"
-              description="Backend REST APIs, Discord Server RBAC, Group DMs, and STOMP heartbeat interceptors are merged on develop. Frontend <ChatPanel /> mounts into this AppShell route."
-            />
-          }
-        />
+        <Route path="/messaging" element={<MessagingPage />} />
         <Route
           path="/opportunities"
           element={
@@ -64,10 +57,12 @@ export function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <Toaster position="top-right" richColors />
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <RealtimeProvider>
+        <Toaster position="top-right" richColors />
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </RealtimeProvider>
     </AuthProvider>
   );
 }
