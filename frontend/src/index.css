@@ -4,8 +4,14 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100;
+    @apply bg-slate-950 text-slate-100 antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Design Guidelines: Tight tracking on headings >= 24px */
+  h1,
+  h2 {
+    letter-spacing: -0.02em;
   }
 
   /* Design Guidelines: Tabular numbers for dates, times, counters */
@@ -14,8 +20,44 @@
   }
 }
 
-/* Design Guidelines: Tactile press feedback on buttons */
+/* Design Guidelines: Tactile press feedback on interactive buttons */
 button:active:not(:disabled) {
   transform: scale(0.97);
   transition: transform 100ms ease-out;
+}
+
+/* Design Guidelines: Centered modal enter from scale(0.95), never scale(0) */
+@keyframes kuet-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes kuet-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.kuet-dialog-content[data-state="open"] {
+  animation: kuet-dialog-in 180ms ease-out;
+}
+
+.kuet-dialog-overlay[data-state="open"] {
+  animation: kuet-overlay-in 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kuet-dialog-content[data-state="open"],
+  .kuet-dialog-overlay[data-state="open"] {
+    animation: none;
+  }
 }
