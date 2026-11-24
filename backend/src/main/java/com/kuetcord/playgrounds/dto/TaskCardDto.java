@@ -1,5 +1,6 @@
 package com.kuetcord.playgrounds.dto;
 
+import com.kuetcord.common.dto.UserRefDto;
 import com.kuetcord.playgrounds.model.TaskPriority;
 import com.kuetcord.playgrounds.model.TaskStatus;
 

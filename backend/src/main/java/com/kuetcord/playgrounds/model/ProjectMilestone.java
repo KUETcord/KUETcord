@@ -49,6 +49,13 @@ public class ProjectMilestone {
     @Column(name = "created_by", updatable = false)
     private Long createdBy;
 
+    /** Written together with status COMPLETED by a conditional UPDATE (see the repository). */
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
+    @Column(name = "completed_by")
+    private Long completedBy;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

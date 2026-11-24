@@ -13,6 +13,8 @@ public record MilestoneDto(
         MilestoneStatus status,
         boolean overdue,
         Long createdBy,
-        Instant createdAt
+        Instant createdAt,
+        Instant completedAt,
+        Long completedBy
 ) {
 }

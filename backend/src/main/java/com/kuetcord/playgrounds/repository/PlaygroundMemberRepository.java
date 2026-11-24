@@ -29,6 +29,9 @@ public interface PlaygroundMemberRepository extends JpaRepository<PlaygroundMemb
                        @Param("userId") Long userId,
                        @Param("role") String role);
 
+    @Query("SELECT m.userId FROM PlaygroundMember m WHERE m.playgroundId = :playgroundId ORDER BY m.userId")
+    List<Long> findUserIds(@Param("playgroundId") Long playgroundId);
+
     @Query("SELECT m.role FROM PlaygroundMember m WHERE m.playgroundId = :playgroundId AND m.userId = :userId")
     Optional<PlaygroundRole> findRole(@Param("playgroundId") Long playgroundId, @Param("userId") Long userId);
 

@@ -2,15 +2,17 @@ package com.kuetcord.playgrounds.service;
 
 import com.kuetcord.auth.model.User;
 import com.kuetcord.auth.repository.UserRepository;
+import com.kuetcord.common.dto.UserRefDto;
 import com.kuetcord.common.exception.BadRequestException;
 import com.kuetcord.common.exception.ResourceNotFoundException;
+import com.kuetcord.playgrounds.access.PlaygroundAccess;
 import com.kuetcord.playgrounds.access.PlaygroundAccessPolicy;
 import com.kuetcord.playgrounds.dto.CreateTaskRequest;
 import com.kuetcord.playgrounds.dto.KanbanBoardDto;
 import com.kuetcord.playgrounds.dto.TaskCardDto;
 import com.kuetcord.playgrounds.dto.TaskDto;
 import com.kuetcord.playgrounds.dto.UpdateTaskRequest;
-import com.kuetcord.playgrounds.dto.UserRefDto;
+import com.kuetcord.playgrounds.event.PlaygroundOutboxEmitter;
 import com.kuetcord.playgrounds.model.PlaygroundPermission;
 import com.kuetcord.playgrounds.model.PlaygroundRole;
 import com.kuetcord.playgrounds.model.ProjectTask;
@@ -36,6 +38,10 @@ import java.util.Map;
  * <p>
  * Cards may move between any two columns: a Kanban board is a shared picture of the work, not a gated
  * workflow, and teams regularly send a card from REVIEW back to IN_PROGRESS.
+ * <p>
+ * Assigning a card to someone else writes a {@code TASK_ASSIGNED} outbox row in the same transaction
+ * as the change, after the versioned write has succeeded. Self-assignment and re-saving the same
+ * assignee do not notify anyone.
  */
 @Service
 @RequiredArgsConstructor
@@ -46,6 +52,7 @@ public class ProjectTaskService {
     private final PlaygroundMemberRepository memberRepository;
     private final UserRepository userRepository;
     private final PlaygroundAccessPolicy accessPolicy;
+    private final PlaygroundOutboxEmitter outboxEmitter;
 
     @Transactional(readOnly = true)
     public KanbanBoardDto board(Long playgroundId, Long userId) {
@@ -74,7 +81,7 @@ public class ProjectTaskService {
 
     /** New cards go to the bottom of their column. */
     public TaskDto create(Long playgroundId, Long userId, CreateTaskRequest request) {
-        accessPolicy.requireWritable(playgroundId, userId, PlaygroundPermission.EDIT_BOARD);
+        PlaygroundAccess access = accessPolicy.requireWritable(playgroundId, userId, PlaygroundPermission.EDIT_BOARD);
         if (request.assigneeId() != null) {
             requireAssignable(playgroundId, request.assigneeId());
         }
@@ -91,13 +98,16 @@ public class ProjectTaskService {
                 .position(nextPosition(playgroundId, status))
                 .createdBy(userId)
                 .build();
-        return toDto(taskRepository.saveAndFlush(task));
+        ProjectTask saved = taskRepository.saveAndFlush(task);
+        notifyIfNewAssignee(access, saved, null, userId);
+        return toDto(saved);
     }
 
     public TaskDto update(Long playgroundId, Long taskId, Long userId, UpdateTaskRequest request) {
-        accessPolicy.requireWritable(playgroundId, userId, PlaygroundPermission.EDIT_BOARD);
+        PlaygroundAccess access = accessPolicy.requireWritable(playgroundId, userId, PlaygroundPermission.EDIT_BOARD);
         ProjectTask task = requireTask(playgroundId, taskId);
         VersionGuard.assertMatches("Task", task.getVersion(), request.expectedVersion());
+        Long previousAssigneeId = task.getAssigneeId();
 
         // Run every lookup before touching the entity so no query triggers an early auto-flush.
         if (request.assigneeId() != null) {
@@ -130,7 +140,9 @@ public class ProjectTaskService {
             task.setPosition(newPosition);
         }
 
-        return toDto(taskRepository.saveAndFlush(task));
+        ProjectTask saved = taskRepository.saveAndFlush(task);
+        notifyIfNewAssignee(access, saved, previousAssigneeId, userId);
+        return toDto(saved);
     }
 
     /** Deleting also needs the current version, so nobody deletes a card a teammate just changed. */
@@ -152,6 +164,13 @@ public class ProjectTaskService {
         PlaygroundRole role = memberRepository.findRole(playgroundId, assigneeId).orElse(null);
         if (role == null || !role.grants(PlaygroundPermission.EDIT_BOARD)) {
             throw new BadRequestException("Assignee must be a LEAD or CONTRIBUTOR of this playground");
+        }
+    }
+
+    private void notifyIfNewAssignee(PlaygroundAccess access, ProjectTask task, Long previousAssigneeId, Long actorId) {
+        Long assigneeId = task.getAssigneeId();
+        if (assigneeId != null && !assigneeId.equals(previousAssigneeId) && !assigneeId.equals(actorId)) {
+            outboxEmitter.taskAssigned(access.playground(), task, actorId);
         }
     }
 
