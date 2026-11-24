@@ -51,7 +51,7 @@ flowchart LR
 | **Phase 1 (Week 1)** | Nov 09, 2026 | Repo setup, Docker Compose, Flyway `V1`–`V3` baseline, GitHub Actions CI, App shell, Scrum & QA Excel Trackers | PR #1 |
 | **Phase 2 (Week 2)** | Nov 14, 2026 | Institutional `@KuetEmail` validator, BCrypt (`PasswordService`), SHA-256 verification tokens, Google OIDC (`GoogleAuthService`), JWT filter, Token Bucket (`RateLimitingFilter`), `AuthController`, `UserController` | PR #2 |
 | **Phase 3 (Week 3)** | Nov 21, 2026 | CT Hub backend (`CourseOffering`, `CourseFollow`, `CtEvent`, `CtEventHistory`), State Pattern (`CtState`), `@Version` optimistic locking, SingleFlight `RequestCoalescer`, atomic `outbox_events`, unit/security/concurrency tests | PR #6 |
-| **Phase 4 (Week 4)** | Nov 22 – Nov 28, 2026 | Frontend CT calendar, timeline cards, course search & filters, verification modal, `break-ui` testing | Planned |
+| **Phase 4 (Week 4)** | Nov 24, 2026 | Authenticated `<AppShell />`, sidebar nav & breadcrumbs, Institutional Auth Portal (`/auth`), CT Hub course browser, follow toggles, timeline cards, Radix modals (`scale(0.95)`), HTTP 409 conflict banner, Sonner toasts & `break-ui` stress tests | PR #9 |
 | **Phase 5 (Observability)** | Nov 16, 2026 | Prometheus HTTP latency histograms, scraper config (`monitoring/prometheus/`), auto-provisioned Grafana datasource & dashboard (`monitoring/grafana/`) | PR #3 |
 | **Phase 6 (Week 6)** | Dec 06 – Dec 12, 2026 | Cross-module integration, seed data script, demo rehearsal, viva prep | Planned |
 
@@ -80,9 +80,9 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 | **Integration (DB)** | `AuthFlowIntegrationIT` | PostgreSQL 16 + Flyway + `/api/v1/auth/**` + `/api/v1/me` | PASS | Verified in CI (Run `43498480126`): Flyway schema, unverified 403 gate, token consume, JWT profile PATCH |
 | **Unit Testing** | `CtStatePatternTest` & `RequestCoalescerUnitTest` | `CtState` transitions & SingleFlight `RequestCoalescer` | PASS | Verifies legal/illegal CT transitions (terminal `CANCELLED`) and 12-thread single-query coalescing |
 | **Security / RBAC & Concurrency** | `CtHubControllerSecurityTest` | `/api/v1/ct/courses/**` & `/api/v1/ct/events/**` | PASS | `ROLE_STUDENT` blocked with HTTP 403; `ROLE_CR` allowed; stale `@Version` returns HTTP 409 |
-| **Integration (DB/Outbox)** | `CtHubConcurrencyAndOutboxIT` | PostgreSQL 16 + Flyway + `CtEventService` + `outbox_events` | PENDING CI | Verifies `@Version` 409 conflict, terminal cancel, history audit trail, and atomic `CT_VERIFIED`/`CT_RESCHEDULED`/`CT_CANCELLED` outbox rows |
+| **Integration (DB/Outbox)** | `CtHubConcurrencyAndOutboxIT` | PostgreSQL 16 + Flyway + `CtEventService` + `outbox_events` | PASS | Verified in CI (Run `44892579267`): `@Version` 409 conflict, terminal cancel, history audit trail, and atomic `CT_VERIFIED`/`CT_RESCHEDULED`/`CT_CANCELLED` outbox rows |
 | **Performance & Load** | `k6_ct_read.js` | `GET /api/v1/ct/events` (50 VUs) | PLANNED | Phase 5 target: p95 <= 150ms under 50 VUs |
-| **Adversarial UI (`break-ui`)** | `AppShellBreakUiTest` | `<AppShell />` & `<CtEventCard />` | PLANNED | Phase 4 target: 80-char title wraps cleanly; empty states render |
+| **Adversarial UI (`break-ui`)** | `App.test.tsx`, `format.test.ts`, `CtHub.break-ui.test.tsx`, `AuthPage.test.tsx` | `<AppShell />`, `<CtHubPage />`, `<AuthPage />` | PASS | Verifies 80+ char course titles, long Unicode names, 1-word names, singular pluralization, empty states, CR vs Student RBAC, and `@stud.kuet.ac.bd` client gate |
 | **CI/CD Smoke Testing** | `deploy.yml` Actuator Health | `GET /actuator/health` | PLANNED | Phase 5 target: Returns `{"status":"UP"}` with PostgreSQL UP |
 
 ---

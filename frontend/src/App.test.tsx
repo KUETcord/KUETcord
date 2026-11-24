@@ -11,9 +11,9 @@ describe('App Shell Smoke Test', () => {
 
   it('renders all 4 core module cards', () => {
     render(<App />);
-    expect(screen.getByText('CT Hub')).toBeInTheDocument();
-    expect(screen.getByText('Core Messaging')).toBeInTheDocument();
-    expect(screen.getByText('Project Playgrounds')).toBeInTheDocument();
-    expect(screen.getByText('Study Circles')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'CT Hub' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Core Messaging' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Project Playgrounds' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Study Circles' })).toBeInTheDocument();
   });
 });
