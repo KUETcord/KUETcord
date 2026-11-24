@@ -1,6 +1,19 @@
-import type { CourseOffering, CtEventSummary, UserSummary } from '../types/domain';
+import type { CourseOffering, CtEventSummary, TeacherSummary, UserSummary } from '../types/domain';
 
 export type DataFixtureMode = 'demo' | 'worst' | 'empty' | 'one';
+
+export const DEMO_TEACHER_USER: UserSummary = {
+  id: 10,
+  email: 'hasan@cse.kuet.ac.bd',
+  displayName: 'Prof. Dr. Hasan Mahmud',
+  username: 'prof.hasan',
+  globalRole: 'TEACHER',
+  roles: ['ROLE_TEACHER'],
+  department: 'CSE',
+  batch: null,
+  emailVerified: true,
+  status: 'ACTIVE',
+};
 
 export const DEMO_CR_USER: UserSummary = {
   id: 2,
@@ -28,18 +41,41 @@ export const DEMO_STUDENT_USER: UserSummary = {
   status: 'ACTIVE',
 };
 
-export const WORST_CASE_USER: UserSummary = {
-  id: 99,
-  email: 'bartholomew.fitzgerald.2007099@stud.kuet.ac.bd',
-  displayName: 'Aleksandra Wiśniewska-Kowalczyk',
-  username: 'aleksandra.wk',
-  globalRole: 'CR',
-  roles: ['ROLE_STUDENT', 'ROLE_CR'],
-  department: 'CSE',
-  batch: '2k20',
-  emailVerified: true,
-  status: 'ACTIVE',
-};
+export const DEMO_TEACHERS: TeacherSummary[] = [
+  {
+    id: 10,
+    displayName: 'Prof. Dr. Hasan Mahmud',
+    email: 'hasan@cse.kuet.ac.bd',
+    department: 'CSE',
+  },
+  {
+    id: 11,
+    displayName: 'Dr. Farhana Yasmin',
+    email: 'farhana@cse.kuet.ac.bd',
+    department: 'CSE',
+  },
+  {
+    id: 12,
+    displayName: 'Prof. Dr. Rafiqul Islam',
+    email: 'rafiqul@eee.kuet.ac.bd',
+    department: 'EEE',
+  },
+];
+
+export const WORST_CASE_TEACHERS: TeacherSummary[] = [
+  {
+    id: 10,
+    displayName: 'Prof. Dr. Aleksandra Wiśniewska-Kowalczyk',
+    email: 'aleksandra.wisniewska-kowalczyk@cse.kuet.ac.bd',
+    department: 'CSE',
+  },
+  {
+    id: 98,
+    displayName: 'Dr. Jo',
+    email: 'jo@me.kuet.ac.bd',
+    department: 'ME',
+  },
+];
 
 export const DEMO_COURSES: CourseOffering[] = [
   {
@@ -82,10 +118,12 @@ export const DEMO_CT_EVENTS: CtEventSummary[] = [
     durationMinutes: 45,
     coveredTopics: 'State Pattern transitions, JPA @Version 409 conflicts, Transactional Outbox with SKIP LOCKED, and Spring Security RBAC.',
     status: 'VERIFIED',
-    submittedById: 3,
-    submittedByName: 'Sadia Afrin',
-    verifiedById: 2,
-    verifiedByName: 'Karim Rahman',
+    submittedById: 2,
+    submittedByName: 'Karim Rahman',
+    assignedTeacherId: 10,
+    assignedTeacherName: 'Prof. Dr. Hasan Mahmud',
+    verifiedById: 10,
+    verifiedByName: 'Prof. Dr. Hasan Mahmud',
     version: 1,
     createdAt: '2026-11-20T09:00:00Z',
     updatedAt: '2026-11-21T10:30:00Z',
@@ -100,8 +138,10 @@ export const DEMO_CT_EVENTS: CtEventSummary[] = [
     durationMinutes: 40,
     coveredTopics: 'Dijkstra, Bellman-Ford, Floyd-Warshall, Kruskal and Prim algorithms with complexity proofs.',
     status: 'UNVERIFIED',
-    submittedById: 3,
-    submittedByName: 'Sadia Afrin',
+    submittedById: 2,
+    submittedByName: 'Karim Rahman',
+    assignedTeacherId: 10,
+    assignedTeacherName: 'Prof. Dr. Hasan Mahmud',
     verifiedById: null,
     verifiedByName: null,
     version: 0,
@@ -118,23 +158,18 @@ export const DEMO_CT_EVENTS: CtEventSummary[] = [
     durationMinutes: 50,
     coveredTopics: 'DTFT convergence, Region of Convergence (ROC), inverse Z-transform via partial fractions.',
     status: 'RESCHEDULED',
-    submittedById: 3,
-    submittedByName: 'Sadia Afrin',
-    verifiedById: 2,
-    verifiedByName: 'Karim Rahman',
+    submittedById: 2,
+    submittedByName: 'Karim Rahman',
+    assignedTeacherId: 10,
+    assignedTeacherName: 'Prof. Dr. Hasan Mahmud',
+    verifiedById: 10,
+    verifiedByName: 'Prof. Dr. Hasan Mahmud',
     version: 2,
     createdAt: '2026-11-18T08:00:00Z',
     updatedAt: '2026-11-22T14:00:00Z',
   },
 ];
 
-/**
- * Realistic adversarial dataset for break-ui stress testing:
- * - 80-character course title & 120-character CT title
- * - Long hyphenated Unicode names & 1-word short names ("Jo")
- * - Missing optional fields (null coveredTopics)
- * - Unbreakable URL inside syllabus description
- */
 export const WORST_CASE_COURSES: CourseOffering[] = [
   {
     id: 901,
@@ -169,8 +204,10 @@ export const WORST_CASE_CT_EVENTS: CtEventSummary[] = [
     status: 'RESCHEDULED',
     submittedById: 99,
     submittedByName: 'Aleksandra Wiśniewska-Kowalczyk',
-    verifiedById: 99,
-    verifiedByName: 'Aleksandra Wiśniewska-Kowalczyk',
+    assignedTeacherId: 10,
+    assignedTeacherName: 'Prof. Dr. Aleksandra Wiśniewska-Kowalczyk',
+    verifiedById: 10,
+    verifiedByName: 'Prof. Dr. Aleksandra Wiśniewska-Kowalczyk',
     version: 14,
     createdAt: '2026-11-01T09:00:00Z',
     updatedAt: '2026-11-23T18:45:00Z',
@@ -187,6 +224,8 @@ export const WORST_CASE_CT_EVENTS: CtEventSummary[] = [
     status: 'UNVERIFIED',
     submittedById: 100,
     submittedByName: 'Jo',
+    assignedTeacherId: 98,
+    assignedTeacherName: 'Dr. Jo',
     verifiedById: null,
     verifiedByName: null,
     version: 0,
@@ -205,8 +244,10 @@ export const WORST_CASE_CT_EVENTS: CtEventSummary[] = [
     status: 'CANCELLED',
     submittedById: 100,
     submittedByName: 'Jo',
-    verifiedById: 99,
-    verifiedByName: 'Aleksandra Wiśniewska-Kowalczyk',
+    assignedTeacherId: 10,
+    assignedTeacherName: 'Prof. Dr. Aleksandra Wiśniewska-Kowalczyk',
+    verifiedById: 10,
+    verifiedByName: 'Prof. Dr. Aleksandra Wiśniewska-Kowalczyk',
     version: 3,
     createdAt: '2026-11-02T09:00:00Z',
     updatedAt: '2026-11-09T11:00:00Z',

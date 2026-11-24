@@ -131,31 +131,22 @@ export function AppShell() {
               </div>
 
               {isDemoMode && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => enterDemoMode('CR')}
-                    className={cn(
-                      'flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors duration-150 ease-out',
-                      user.globalRole === 'CR'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
-                    )}
-                  >
-                    Demo: CR
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => enterDemoMode('STUDENT')}
-                    className={cn(
-                      'flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors duration-150 ease-out',
-                      user.globalRole === 'STUDENT'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
-                    )}
-                  >
-                    Demo: Student
-                  </button>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['TEACHER', 'CR', 'STUDENT'] as const).map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => enterDemoMode(role)}
+                      className={cn(
+                        'rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors duration-150 ease-out',
+                        user.globalRole === role
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
+                      )}
+                    >
+                      {role === 'TEACHER' ? 'Teacher' : role === 'CR' ? 'CR' : 'Student'}
+                    </button>
+                  ))}
                 </div>
               )}
 

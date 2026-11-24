@@ -31,15 +31,19 @@ public class AuthAccountProvisioner {
     private final SecureRandom random = new SecureRandom();
 
     public Role requireStudentRole() {
-        return roleRepository.findByName(RoleName.ROLE_STUDENT)
-                .orElseThrow(() -> new IllegalStateException("Baseline ROLE_STUDENT missing from roles table"));
+        return requireRole(RoleName.ROLE_STUDENT);
+    }
+
+    public Role requireRole(RoleName roleName) {
+        return roleRepository.findByName(roleName)
+                .orElseThrow(() -> new IllegalStateException("Baseline " + roleName + " missing from roles table"));
     }
 
     public String deriveUniqueUsername(String normalizedEmail) {
         String localPart = normalizedEmail.substring(0, normalizedEmail.indexOf('@'))
                 .replaceAll("[^a-zA-Z0-9._-]", "");
         if (localPart.isBlank()) {
-            localPart = "student";
+            localPart = "user";
         }
 
         String base = localPart.length() > 40 ? localPart.substring(0, 40) : localPart;
@@ -74,4 +78,3 @@ public class AuthAccountProvisioner {
         );
     }
 }
-

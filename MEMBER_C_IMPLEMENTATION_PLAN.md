@@ -566,7 +566,7 @@ npm run test -- KanbanBoard.test.tsx TaskCard.test.tsx PomodoroTimer.test.tsx
 3. **Course Linking:** Member C links `study_circles` to Member A's `course_offerings(id)`.
 
 ### What Member C Consumes from A and B
-- **From Member A:** Authenticated `User` entity from `SecurityContextHolder` and course offerings catalog from `CourseOfferingRepository`.
+- **From Member A:** Authenticated `User` entity from `SecurityContextHolder` (global roles now include `ROLE_TEACHER` in Flyway `V10`) and course offerings catalog from `CourseOfferingRepository`. Note: Flyway `V10` is reserved by Member A (`V10__add_teacher_role_and_ct_approval_workflow.sql`); use `V11+` for any new migrations.
 - **From Member B:** Shared conversation creation API (`POST /api/v1/conversations/group` or repository link) when a Playground or Study Circle is created.
 
 ### Parallel Development & Mocking Strategy (Weeks 1–3)

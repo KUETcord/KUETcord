@@ -50,7 +50,10 @@ public class AuthService {
             throw new ConflictException("An account with this KUET email already exists");
         }
 
-        Role studentRole = accountProvisioner.requireStudentRole();
+        Role initialRole = accountProvisioner.requireRole(
+                emailDomainValidator.isFacultyEmail(normalizedEmail)
+                        ? com.kuetcord.auth.model.RoleName.ROLE_TEACHER
+                        : com.kuetcord.auth.model.RoleName.ROLE_STUDENT);
         User newUser = User.builder()
                 .email(normalizedEmail)
                 .displayName(request.displayName().trim())
@@ -59,7 +62,7 @@ public class AuthService {
                 .department(trimNullable(request.department()))
                 .batch(trimNullable(request.batch()))
                 .status(UserStatus.ACTIVE)
-                .roles(new HashSet<>(Set.of(studentRole)))
+                .roles(new HashSet<>(Set.of(initialRole)))
                 .build();
 
         User saved = userRepository.save(newUser);

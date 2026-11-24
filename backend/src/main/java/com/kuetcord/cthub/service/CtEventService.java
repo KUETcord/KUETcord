@@ -1,8 +1,11 @@
 package com.kuetcord.cthub.service;
 
+import com.kuetcord.auth.model.RoleName;
 import com.kuetcord.auth.model.User;
 import com.kuetcord.auth.repository.UserRepository;
 import com.kuetcord.common.concurrency.RequestCoalescer;
+import com.kuetcord.common.exception.BadRequestException;
+import com.kuetcord.common.exception.ForbiddenException;
 import com.kuetcord.common.exception.ResourceNotFoundException;
 import com.kuetcord.common.outbox.OutboxEventPublisher;
 import com.kuetcord.cthub.dto.CancelCtEventRequest;
@@ -12,6 +15,7 @@ import com.kuetcord.cthub.dto.CtEventSummaryDto;
 import com.kuetcord.cthub.dto.RescheduleCtEventRequest;
 import com.kuetcord.cthub.dto.VerifyCtEventRequest;
 import com.kuetcord.cthub.event.CtStatusChangedDomainEvent;
+import com.kuetcord.cthub.event.CtTeacherNotificationDomainEvent;
 import com.kuetcord.cthub.model.CourseOffering;
 import com.kuetcord.cthub.model.CtEvent;
 import com.kuetcord.cthub.model.CtEventHistory;
@@ -37,9 +41,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Core CT Hub workflow engine enforcing State Pattern lifecycle transitions,
+ * Core CT Hub workflow engine enforcing CR-to-Teacher approval RBAC, State Pattern lifecycle transitions,
  * JPA {@code @Version} optimistic concurrency control, SingleFlight read coalescing,
- * and atomic transactional outbox event emission.
+ * and atomic transactional outbox + teacher notifications.
  */
 @Service
 @RequiredArgsConstructor
@@ -96,6 +100,7 @@ public class CtEventService {
         CourseOffering course = courseOfferingRepository.findById(request.courseOfferingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Course offering not found: " + request.courseOfferingId()));
         User submitter = requireUser(submitterId);
+        User assignedTeacher = requireActiveTeacher(request.teacherId());
 
         CtEvent event = CtEvent.builder()
                 .courseOffering(course)
@@ -105,6 +110,7 @@ public class CtEventService {
                 .coveredTopics(request.coveredTopics() != null ? request.coveredTopics().trim() : null)
                 .status(CtStatus.UNVERIFIED)
                 .submittedBy(submitter)
+                .assignedTeacher(assignedTeacher)
                 .build();
 
         CtEvent saved = ctEventRepository.saveAndFlush(event);
@@ -114,9 +120,34 @@ public class CtEventService {
                 .newStatus(CtStatus.UNVERIFIED)
                 .previousScheduledAt(null)
                 .newScheduledAt(saved.getScheduledAt())
-                .reason("Submitted proposed CT schedule")
+                .reason("Proposed by " + submitter.getDisplayName() + " for approval by " + assignedTeacher.getDisplayName())
                 .changedBy(submitter)
                 .build());
+
+        Map<String, Object> outboxPayload = new LinkedHashMap<>();
+        outboxPayload.put("ctEventId", saved.getId());
+        outboxPayload.put("courseOfferingId", course.getId());
+        outboxPayload.put("courseCode", course.getCourseCode());
+        outboxPayload.put("title", saved.getTitle());
+        outboxPayload.put("scheduledAt", saved.getScheduledAt().toString());
+        outboxPayload.put("submittedById", submitter.getId());
+        outboxPayload.put("submittedByName", submitter.getDisplayName());
+        outboxPayload.put("teacherId", assignedTeacher.getId());
+        outboxPayload.put("teacherEmail", assignedTeacher.getEmail());
+        outboxPayload.put("teacherName", assignedTeacher.getDisplayName());
+
+        outboxEventPublisher.publish(AGGREGATE_TYPE, String.valueOf(saved.getId()), "CT_APPROVAL_REQUESTED", outboxPayload);
+
+        if (!assignedTeacher.getId().equals(submitter.getId())) {
+            domainEventPublisher.publishEvent(new CtTeacherNotificationDomainEvent(
+                    saved.getId(),
+                    assignedTeacher.getEmail(),
+                    assignedTeacher.getDisplayName(),
+                    "[KUETcord] CT Approval Requested: " + course.getCourseCode() + " - " + saved.getTitle(),
+                    submitter.getDisplayName() + " proposed \"" + saved.getTitle() + "\" for "
+                            + course.getCourseCode() + " scheduled at " + saved.getScheduledAt() + "."
+            ));
+        }
 
         return CtEventSummaryDto.from(saved);
     }
@@ -129,6 +160,8 @@ public class CtEventService {
         }
 
         User actor = requireUser(actorId);
+        assertAssignedTeacherOrAdmin(event, actor, false);
+
         CtStatus previousStatus = event.getStatus();
         Instant scheduledAt = event.getScheduledAt();
 
@@ -137,9 +170,9 @@ public class CtEventService {
 
         String note = (request != null && request.note() != null && !request.note().isBlank())
                 ? request.note().trim()
-                : "Verified by authorized academic representative";
+                : "Approved by course teacher";
 
-        recordAuditAndEmitEvents(saved, previousStatus, scheduledAt, note, actor, "CT_VERIFIED");
+        recordAuditAndEmitEvents(saved, previousStatus, scheduledAt, note, actor, "CT_VERIFIED", false);
         return CtEventSummaryDto.from(saved);
     }
 
@@ -149,13 +182,15 @@ public class CtEventService {
         assertVersionMatch(event, request.expectedVersion());
 
         User actor = requireUser(actorId);
+        assertAssignedTeacherOrAdmin(event, actor, true);
+
         CtStatus previousStatus = event.getStatus();
         Instant previousScheduledAt = event.getScheduledAt();
 
         ctStateResolver.resolve(previousStatus).reschedule(event, request.newScheduledAt(), request.reason().trim(), actor);
         CtEvent saved = ctEventRepository.saveAndFlush(event);
 
-        recordAuditAndEmitEvents(saved, previousStatus, previousScheduledAt, request.reason().trim(), actor, "CT_RESCHEDULED");
+        recordAuditAndEmitEvents(saved, previousStatus, previousScheduledAt, request.reason().trim(), actor, "CT_RESCHEDULED", true);
         return CtEventSummaryDto.from(saved);
     }
 
@@ -165,13 +200,15 @@ public class CtEventService {
         assertVersionMatch(event, request.expectedVersion());
 
         User actor = requireUser(actorId);
+        assertAssignedTeacherOrAdmin(event, actor, true);
+
         CtStatus previousStatus = event.getStatus();
         Instant previousScheduledAt = event.getScheduledAt();
 
         ctStateResolver.resolve(previousStatus).cancel(event, request.reason().trim(), actor);
         CtEvent saved = ctEventRepository.saveAndFlush(event);
 
-        recordAuditAndEmitEvents(saved, previousStatus, previousScheduledAt, request.reason().trim(), actor, "CT_CANCELLED");
+        recordAuditAndEmitEvents(saved, previousStatus, previousScheduledAt, request.reason().trim(), actor, "CT_CANCELLED", true);
         return CtEventSummaryDto.from(saved);
     }
 
@@ -181,7 +218,8 @@ public class CtEventService {
             Instant previousScheduledAt,
             String reason,
             User actor,
-            String outboxEventType) {
+            String outboxEventType,
+            boolean notifyTeacherIfDifferentActor) {
 
         ctEventHistoryRepository.save(CtEventHistory.builder()
                 .ctEvent(saved)
@@ -194,6 +232,10 @@ public class CtEventService {
                 .build());
 
         List<Long> followerIds = courseFollowRepository.findFollowerUserIdsByCourseOfferingId(saved.getCourseOffering().getId());
+        User assignedTeacher = saved.getAssignedTeacher();
+        boolean notifyTeacher = notifyTeacherIfDifferentActor
+                && assignedTeacher != null
+                && !assignedTeacher.getId().equals(actor.getId());
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("ctEventId", saved.getId());
@@ -205,7 +247,13 @@ public class CtEventService {
         payload.put("scheduledAt", saved.getScheduledAt().toString());
         payload.put("reason", reason);
         payload.put("actorId", actor.getId());
+        payload.put("actorName", actor.getDisplayName());
         payload.put("followerUserIds", followerIds);
+        if (assignedTeacher != null) {
+            payload.put("teacherId", assignedTeacher.getId());
+            payload.put("teacherEmail", assignedTeacher.getEmail());
+        }
+        payload.put("notifyTeacher", notifyTeacher);
 
         outboxEventPublisher.publish(AGGREGATE_TYPE, String.valueOf(saved.getId()), outboxEventType, payload);
 
@@ -220,6 +268,48 @@ public class CtEventService {
                 actor.getId(),
                 reason
         ));
+
+        if (notifyTeacher) {
+            String actionLabel = "CT_CANCELLED".equals(outboxEventType) ? "cancelled" : "rescheduled";
+            domainEventPublisher.publishEvent(new CtTeacherNotificationDomainEvent(
+                    saved.getId(),
+                    assignedTeacher.getEmail(),
+                    assignedTeacher.getDisplayName(),
+                    "[KUETcord] CT " + actionLabel + ": " + saved.getCourseOffering().getCourseCode() + " - " + saved.getTitle(),
+                    actor.getDisplayName() + " " + actionLabel + " \"" + saved.getTitle()
+                            + "\" (" + saved.getCourseOffering().getCourseCode() + "). Reason: " + reason
+            ));
+        }
+    }
+
+    private void assertAssignedTeacherOrAdmin(CtEvent event, User actor, boolean allowCr) {
+        boolean isElevated = hasRole(actor, RoleName.ROLE_ADMIN) || hasRole(actor, RoleName.ROLE_MODERATOR);
+        if (isElevated) {
+            return;
+        }
+        if (allowCr && hasRole(actor, RoleName.ROLE_CR)) {
+            return;
+        }
+        if (hasRole(actor, RoleName.ROLE_TEACHER)) {
+            if (event.getAssignedTeacher() != null && event.getAssignedTeacher().getId().equals(actor.getId())) {
+                return;
+            }
+            throw new ForbiddenException("Only the assigned course teacher can perform this action");
+        }
+        throw new ForbiddenException("Insufficient permissions for this CT Hub action");
+    }
+
+    private User requireActiveTeacher(Long teacherId) {
+        User teacher = userRepository.findById(teacherId)
+                .orElseThrow(() -> new ResourceNotFoundException("Teacher not found: " + teacherId));
+        if (!teacher.isActive() || !hasRole(teacher, RoleName.ROLE_TEACHER)) {
+            throw new BadRequestException("Selected user is not an active KUET course teacher");
+        }
+        return teacher;
+    }
+
+    private static boolean hasRole(User user, RoleName roleName) {
+        return user.getRoles().stream().anyMatch(role -> role.getName() == roleName);
     }
 
     private CtEvent requireEventWithDetails(Long ctEventId) {

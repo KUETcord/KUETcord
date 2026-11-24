@@ -1,4 +1,4 @@
-export type GlobalRole = 'STUDENT' | 'CR' | 'MODERATOR' | 'ADMIN';
+export type GlobalRole = 'STUDENT' | 'CR' | 'TEACHER' | 'MODERATOR' | 'ADMIN';
 
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
 
@@ -13,6 +13,13 @@ export interface UserSummary {
   batch: string | null;
   emailVerified: boolean;
   status: UserStatus;
+}
+
+export interface TeacherSummary {
+  id: number;
+  displayName: string;
+  email: string;
+  department: string | null;
 }
 
 export interface AuthResponse {
@@ -52,6 +59,8 @@ export interface CtEventSummary {
   status: CtStatus;
   submittedById: number;
   submittedByName: string;
+  assignedTeacherId: number | null;
+  assignedTeacherName: string | null;
   verifiedById: number | null;
   verifiedByName: string | null;
   version: number;

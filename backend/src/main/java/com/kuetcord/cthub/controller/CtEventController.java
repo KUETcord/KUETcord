@@ -29,7 +29,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Class Test Hub scheduling, verification, rescheduling, and cancellation endpoints.
+ * Class Test Hub scheduling, teacher approval, rescheduling, and cancellation endpoints.
  */
 @RestController
 @RequestMapping("/api/v1/ct/events")
@@ -48,12 +48,13 @@ public class CtEventController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('CR', 'TEACHER', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CtEventSummaryDto>> createEvent(
             @AuthenticationPrincipal AuthenticatedUser principal,
             @Valid @RequestBody CreateCtEventRequest request) {
         CtEventSummaryDto created = ctEventService.createEvent(principal.id(), request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("CT schedule proposed (UNVERIFIED)", created));
+                .body(ApiResponse.ok("CT schedule proposed and assigned teacher notified", created));
     }
 
     @GetMapping("/{id}")
@@ -62,17 +63,17 @@ public class CtEventController {
     }
 
     @PostMapping("/{id}/verify")
-    @PreAuthorize("hasAnyRole('CR', 'MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('TEACHER', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CtEventSummaryDto>> verifyEvent(
             @AuthenticationPrincipal AuthenticatedUser principal,
             @PathVariable Long id,
             @RequestBody(required = false) VerifyCtEventRequest request) {
         CtEventSummaryDto verified = ctEventService.verifyEvent(id, principal.id(), request);
-        return ResponseEntity.ok(ApiResponse.ok("CT event verified", verified));
+        return ResponseEntity.ok(ApiResponse.ok("CT event approved by course teacher", verified));
     }
 
     @PostMapping("/{id}/reschedule")
-    @PreAuthorize("hasAnyRole('CR', 'MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('CR', 'TEACHER', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CtEventSummaryDto>> rescheduleEvent(
             @AuthenticationPrincipal AuthenticatedUser principal,
             @PathVariable Long id,
@@ -82,7 +83,7 @@ public class CtEventController {
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasAnyRole('CR', 'MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('CR', 'TEACHER', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CtEventSummaryDto>> cancelEvent(
             @AuthenticationPrincipal AuthenticatedUser principal,
             @PathVariable Long id,

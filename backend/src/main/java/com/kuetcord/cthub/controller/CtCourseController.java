@@ -46,7 +46,7 @@ public class CtCourseController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('CR', 'MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('CR', 'TEACHER', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CourseOfferingDto>> createCourse(
             @Valid @RequestBody CreateCourseOfferingRequest request) {
         CourseOfferingDto created = courseOfferingService.createCourse(request);

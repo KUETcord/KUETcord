@@ -34,22 +34,38 @@ class EmailDomainValidatorTest {
             "  2007005@stud.kuet.ac.bd  "
     })
     @DisplayName("Should accept valid KUET student emails")
-    void shouldAcceptValidInstitutionalEmails(String email) {
+    void shouldAcceptValidStudentEmails(String email) {
         assertTrue(domainValidator.isValid(email));
+        assertTrue(domainValidator.isStudentEmail(email));
+        assertFalse(domainValidator.isFacultyEmail(email));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "faculty@kuet.ac.bd",
+            "prof.hasan@cse.kuet.ac.bd",
+            "dr.karim@EEE.KUET.AC.BD",
+            "  chair@me.kuet.ac.bd  "
+    })
+    @DisplayName("Should accept valid KUET faculty emails (@kuet.ac.bd and @<dept>.kuet.ac.bd)")
+    void shouldAcceptValidFacultyEmails(String email) {
+        assertTrue(domainValidator.isValid(email));
+        assertTrue(domainValidator.isFacultyEmail(email));
+        assertFalse(domainValidator.isStudentEmail(email));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {
             "student@gmail.com",
             "user@yahoo.com",
-            "faculty@kuet.ac.bd",
             "2007001@stud.kuet.ac.bd.evil.com",
+            "spoof@sub.cse.kuet.ac.bd",
             "bad space@stud.kuet.ac.bd",
             "@stud.kuet.ac.bd",
             "",
             "   "
     })
-    @DisplayName("Should reject external, spoofed subdomain, and malformed emails")
+    @DisplayName("Should reject external, multi-level spoofed subdomain, and malformed emails")
     void shouldRejectNonKuetOrMalformedEmails(String email) {
         assertFalse(domainValidator.isValid(email));
     }
@@ -71,18 +87,24 @@ class EmailDomainValidatorTest {
     }
 
     @Test
-    @DisplayName("Bean Validation @KuetEmail should pass valid KUET email on RegisterRequest")
-    void beanValidationShouldAcceptKuetEmail() {
-        RegisterRequest validRequest = new RegisterRequest(
+    @DisplayName("Bean Validation @KuetEmail should pass valid KUET student and faculty emails")
+    void beanValidationShouldAcceptKuetEmails() {
+        RegisterRequest studentReq = new RegisterRequest(
                 "2007001@stud.kuet.ac.bd",
                 "StrongPassword!2026",
                 "Rahim Ahmed",
                 "CSE",
                 "2k20"
         );
+        RegisterRequest teacherReq = new RegisterRequest(
+                "prof.hasan@cse.kuet.ac.bd",
+                "StrongPassword!2026",
+                "Prof. Dr. Hasan Mahmud",
+                "CSE",
+                null
+        );
 
-        Set<ConstraintViolation<RegisterRequest>> violations = beanValidator.validate(validRequest);
-        assertTrue(violations.isEmpty());
+        assertTrue(beanValidator.validate(studentReq).isEmpty());
+        assertTrue(beanValidator.validate(teacherReq).isEmpty());
     }
 }
-

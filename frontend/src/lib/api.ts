@@ -5,6 +5,7 @@ import type {
   CtEventDetail,
   CtEventSummary,
   CtStatus,
+  TeacherSummary,
   UserSummary,
 } from '../types/domain';
 
@@ -178,8 +179,17 @@ export const ctHubApi = {
     return request<CtEventDetail>(`/ct/events/${eventId}`);
   },
 
+  searchTeachers(query?: string, department?: string): Promise<TeacherSummary[]> {
+    const qs = new URLSearchParams();
+    if (query) qs.set('q', query);
+    if (department) qs.set('department', department);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<TeacherSummary[]>(`/ct/teachers${suffix}`);
+  },
+
   createEvent(payload: {
     courseOfferingId: number;
+    teacherId: number;
     title: string;
     scheduledAt: string;
     durationMinutes: number;

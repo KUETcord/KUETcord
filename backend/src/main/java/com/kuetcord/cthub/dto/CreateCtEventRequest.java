@@ -12,6 +12,9 @@ public record CreateCtEventRequest(
         @NotNull(message = "Course offering ID is required")
         Long courseOfferingId,
 
+        @NotNull(message = "Assigned teacher ID is required")
+        Long teacherId,
+
         @NotBlank(message = "Title is required")
         @Size(min = 3, max = 150, message = "Title must be between 3 and 150 characters")
         String title,

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react';
-import type { CourseOffering, CtEventSummary } from '../../types/domain';
+import { AlertTriangle, Check, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { ctHubApi } from '../../lib/api';
+import { getInitials } from '../../lib/format';
+import type { CourseOffering, CtEventSummary, TeacherSummary } from '../../types/domain';
 
 function ModalFrame({
   open,
@@ -20,7 +22,7 @@ function ModalFrame({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="kuet-dialog-overlay fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm" />
-        <Dialog.Content className="kuet-dialog-content fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl focus:outline-none">
+        <Dialog.Content className="kuet-dialog-content fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl focus:outline-none">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <Dialog.Title className="text-lg font-semibold tracking-tight text-white">
@@ -48,8 +50,12 @@ interface ProposeCtModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courses: CourseOffering[];
+  demoTeachers: TeacherSummary[];
+  isDemoMode: boolean;
   onSubmit: (payload: {
     courseOfferingId: number;
+    teacherId: number;
+    teacherName: string;
     title: string;
     scheduledAt: string;
     durationMinutes: number;
@@ -57,8 +63,20 @@ interface ProposeCtModalProps {
   }) => Promise<void>;
 }
 
-export function ProposeCtModal({ open, onOpenChange, courses, onSubmit }: ProposeCtModalProps) {
+export function ProposeCtModal({
+  open,
+  onOpenChange,
+  courses,
+  demoTeachers,
+  isDemoMode,
+  onSubmit,
+}: ProposeCtModalProps) {
   const [courseOfferingId, setCourseOfferingId] = useState<string>(courses[0] ? String(courses[0].id) : '');
+  const [teacherQuery, setTeacherQuery] = useState('');
+  const [teacherResults, setTeacherResults] = useState<TeacherSummary[]>(demoTeachers);
+  const [selectedTeacher, setSelectedTeacher] = useState<TeacherSummary | null>(null);
+  const [searchingTeachers, setSearchingTeachers] = useState(false);
+
   const [title, setTitle] = useState('');
   const [scheduledLocal, setScheduledLocal] = useState('2026-12-01T10:00');
   const [durationMinutes, setDurationMinutes] = useState('45');
@@ -72,10 +90,41 @@ export function ProposeCtModal({ open, onOpenChange, courses, onSubmit }: Propos
     }
   }, [open, courses, courseOfferingId]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const q = teacherQuery.trim().toLowerCase();
+    if (isDemoMode) {
+      const filtered = demoTeachers.filter(
+        (t) =>
+          !q ||
+          t.displayName.toLowerCase().includes(q) ||
+          t.email.toLowerCase().includes(q) ||
+          (t.department && t.department.toLowerCase().includes(q)),
+      );
+      setTeacherResults(filtered);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setSearchingTeachers(true);
+      try {
+        const fetched = await ctHubApi.searchTeachers(q || undefined);
+        setTeacherResults(fetched);
+      } catch {
+        setTeacherResults([]);
+      } finally {
+        setSearchingTeachers(false);
+      }
+    }, 200);
+
+    return () => window.clearTimeout(timer);
+  }, [open, teacherQuery, isDemoMode, demoTeachers]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!courseOfferingId || !title.trim() || !scheduledLocal) {
-      setError('Please complete all required fields.');
+    if (!courseOfferingId || !selectedTeacher || !title.trim() || !scheduledLocal) {
+      setError('Please select a course, assign a course teacher, and complete required fields.');
       return;
     }
 
@@ -84,6 +133,8 @@ export function ProposeCtModal({ open, onOpenChange, courses, onSubmit }: Propos
     try {
       await onSubmit({
         courseOfferingId: Number(courseOfferingId),
+        teacherId: selectedTeacher.id,
+        teacherName: selectedTeacher.displayName,
         title: title.trim(),
         scheduledAt: new Date(scheduledLocal).toISOString(),
         durationMinutes: Number(durationMinutes) || 45,
@@ -91,6 +142,8 @@ export function ProposeCtModal({ open, onOpenChange, courses, onSubmit }: Propos
       });
       setTitle('');
       setCoveredTopics('');
+      setTeacherQuery('');
+      setSelectedTeacher(null);
       onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to propose CT schedule');
@@ -104,7 +157,7 @@ export function ProposeCtModal({ open, onOpenChange, courses, onSubmit }: Propos
       open={open}
       onOpenChange={onOpenChange}
       title="Propose Class Test Schedule"
-      description="Submitted CTs start as UNVERIFIED until confirmed by a Class Representative or Moderator."
+      description="Assign the course teacher so they are notified immediately to review and approve this CT."
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
@@ -130,6 +183,91 @@ export function ProposeCtModal({ open, onOpenChange, courses, onSubmit }: Propos
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Searchable Teacher Picker */}
+        <div>
+          <label htmlFor="ct-teacher-search" className="block text-xs font-medium text-slate-300">
+            Course Teacher (Notified for Approval)
+          </label>
+          <div className="relative mt-1.5">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500"
+              aria-hidden="true"
+            />
+            <input
+              id="ct-teacher-search"
+              type="search"
+              value={teacherQuery}
+              onChange={(e) => setTeacherQuery(e.target.value)}
+              placeholder="Search teacher by name or email..."
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+            />
+          </div>
+
+          {selectedTeacher && (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+              <div className="min-w-0 truncate">
+                <span className="font-semibold">{selectedTeacher.displayName}</span>
+                <span className="ml-2 text-emerald-300/80">{selectedTeacher.email}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTeacher(null)}
+                className="text-emerald-300 hover:text-white shrink-0"
+                aria-label="Clear selected teacher"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div
+            role="listbox"
+            aria-label="Matching course teachers"
+            className="mt-1.5 max-h-36 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/90 divide-y divide-slate-800/70"
+          >
+            {searchingTeachers ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-slate-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                <span>Searching KUET faculty...</span>
+              </div>
+            ) : teacherResults.length === 0 ? (
+              <p className="px-3 py-2.5 text-xs text-slate-500">No matching teachers found.</p>
+            ) : (
+              teacherResults.map((teacher) => {
+                const isSelected = selectedTeacher?.id === teacher.id;
+                return (
+                  <button
+                    key={teacher.id}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => setSelectedTeacher(teacher)}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors duration-150 ease-out hover:bg-slate-800/80"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500/15 text-[11px] font-semibold text-sky-300">
+                      {getInitials(teacher.displayName)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-slate-100" title={teacher.displayName}>
+                        {teacher.displayName}
+                      </p>
+                      <p className="truncate text-[11px] text-slate-400 [overflow-wrap:anywhere]">
+                        {teacher.email}
+                      </p>
+                    </div>
+                    {teacher.department && (
+                      <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-300 shrink-0">
+                        {teacher.department}
+                      </span>
+                    )}
+                    {isSelected && <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
 
         <div>
@@ -204,11 +342,11 @@ export function ProposeCtModal({ open, onOpenChange, courses, onSubmit }: Propos
           </Dialog.Close>
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || !selectedTeacher}
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
-            <span>Submit Proposal</span>
+            <span>Submit &amp; Notify Teacher</span>
           </button>
         </div>
       </form>
@@ -280,7 +418,7 @@ export function RescheduleCtModal({
       title="Reschedule Class Test"
       description={
         event
-          ? `Protected by JPA @Version optimistic locking (current version v${event.version}).`
+          ? `Protected by JPA @Version optimistic locking (v${event.version}). The assigned teacher and course followers will be notified.`
           : ''
       }
     >
@@ -393,7 +531,7 @@ export function CancelCtModal({ event, onOpenChange, onSubmit }: CancelCtModalPr
       open={Boolean(event)}
       onOpenChange={onOpenChange}
       title="Cancel Class Test"
-      description="Cancelling transitions this CT to the terminal CANCELLED state and alerts course followers."
+      description="Cancelling transitions this CT to the terminal CANCELLED state and notifies the assigned teacher and course followers."
     >
       {event && (
         <form onSubmit={handleSubmit} className="space-y-4">

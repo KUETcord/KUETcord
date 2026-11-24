@@ -5,18 +5,22 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  GraduationCap,
   Loader2,
   RefreshCw,
   UserCheck,
   XCircle,
 } from 'lucide-react';
 import { cn, formatExactDateTime, formatSmartTimestamp, getInitials } from '../../lib/format';
-import type { CtEventSummary } from '../../types/domain';
+import type { CtEventSummary, GlobalRole } from '../../types/domain';
 import { CtStatusBadge } from './CtStatusBadge';
 
 interface CtEventCardProps {
   event: CtEventSummary;
-  canModerate: boolean;
+  currentUserId: number | null;
+  currentUserRole: GlobalRole | null;
+  canApprove: boolean;
+  canRescheduleOrCancel: boolean;
   verifyingId: number | null;
   onVerify: (event: CtEventSummary) => void;
   onOpenReschedule: (event: CtEventSummary) => void;
@@ -25,7 +29,10 @@ interface CtEventCardProps {
 
 export function CtEventCard({
   event,
-  canModerate,
+  currentUserId,
+  currentUserRole,
+  canApprove,
+  canRescheduleOrCancel,
   verifyingId,
   onVerify,
   onOpenReschedule,
@@ -34,8 +41,22 @@ export function CtEventCard({
   const [topicsOpen, setTopicsOpen] = useState(false);
 
   const isTerminal = event.status === 'CANCELLED';
-  const canVerify = canModerate && (event.status === 'UNVERIFIED' || event.status === 'RESCHEDULED');
-  const canMutate = canModerate && !isTerminal;
+  const isElevated = currentUserRole === 'ADMIN' || currentUserRole === 'MODERATOR';
+  const isAssignedTeacher =
+    currentUserRole === 'TEACHER' &&
+    currentUserId !== null &&
+    event.assignedTeacherId === currentUserId;
+
+  const canApproveThisEvent =
+    canApprove &&
+    (isElevated || isAssignedTeacher) &&
+    (event.status === 'UNVERIFIED' || event.status === 'RESCHEDULED');
+
+  const canMutateThisEvent =
+    canRescheduleOrCancel &&
+    !isTerminal &&
+    (isElevated || currentUserRole === 'CR' || isAssignedTeacher);
+
   const isVerifying = verifyingId === event.id;
 
   return (
@@ -79,12 +100,21 @@ export function CtEventCard({
               <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{event.durationMinutes} min</span>
             </span>
+            {event.assignedTeacherName && (
+              <span
+                className="inline-flex min-w-0 items-center gap-1.5 text-sky-300/90"
+                title={`Assigned teacher: ${event.assignedTeacherName}`}
+              >
+                <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate max-w-[26ch]">{event.assignedTeacherName}</span>
+              </span>
+            )}
           </div>
         </div>
 
-        {canMutate && (
+        {(canApproveThisEvent || canMutateThisEvent) && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {canVerify && (
+            {canApproveThisEvent && (
               <button
                 type="button"
                 disabled={isVerifying}
@@ -96,25 +126,29 @@ export function CtEventCard({
                 ) : (
                   <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 )}
-                <span>Verify</span>
+                <span>Approve</span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => onOpenReschedule(event)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors duration-150 ease-out hover:bg-slate-700"
-            >
-              <RefreshCw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span>Reschedule</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpenCancel(event)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:bg-rose-500/20"
-            >
-              <XCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span>Cancel</span>
-            </button>
+            {canMutateThisEvent && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onOpenReschedule(event)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors duration-150 ease-out hover:bg-slate-700"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>Reschedule</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenCancel(event)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:bg-rose-500/20"
+                >
+                  <XCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>Cancel</span>
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -138,7 +172,7 @@ export function CtEventCard({
             {event.verifiedByName && (
               <span
                 className="inline-flex min-w-0 items-center gap-1 truncate text-emerald-300/90"
-                title={`Verified by ${event.verifiedByName}`}
+                title={`Approved by ${event.verifiedByName}`}
               >
                 <UserCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 <span className="truncate">{event.verifiedByName}</span>
