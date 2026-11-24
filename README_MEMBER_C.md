@@ -128,6 +128,54 @@ flowchart LR
 - **Pomodoro Timer Widget:** Frontend circular countdown timer for focused revision sprints.
 - **Campus Pulse:** Verified university, departmental, and club announcements feed.
 
+#### 2.3.1 Week 3 implementation (backend, done)
+
+**Packages:** `com.kuetcord.studycircles` and `com.kuetcord.pulse` (new), plus `playgrounds.event` and the opportunity link in `com.kuetcord.playgrounds`. `UserRefDto` moved to `common.dto` so all three modules share it.
+
+| Method | Route | Access | Behaviour |
+|---|---|---|---|
+| `GET` | `/api/v1/study-circles` | Authenticated | Directory, newest first; `courseOfferingId`, `q`, `mine`, `page`, `size` (max 50). Cards: `course`, `memberCount`, `myRole`, `nextSessionAt`. |
+| `POST` | `/api/v1/study-circles` | Authenticated | Create; optional `courseOfferingId` must exist in Member A's catalog (`404` otherwise). Creator becomes `HOST`. |
+| `GET` | `/api/v1/study-circles/{id}` | Authenticated | Circle page: course, creator, members, `resourceCount`; `nextSession` only for members. |
+| `POST` | `/api/v1/study-circles/{id}/join` | Authenticated | Join as `ATTENDEE`; `201` first time, `200` afterwards (idempotent, a HOST stays HOST). |
+| `GET` / `POST` | `/api/v1/study-circles/{id}/sessions` | Circle member | Upcoming sessions (in-progress included) or `includePast=true`; schedule with `title`, `scheduledAt`, `durationMinutes` (15-480, default 60), `agenda`, `locationOrLink`. |
+| `GET` / `POST` | `/api/v1/study-circles/{id}/resources` | Circle member | Share http(s) links as `NOTES`, `QUESTION_BANK`, `SLIDES`, `RECORDING`; newest first with contributor. |
+| `GET` | `/api/v1/announcements` | Authenticated | Campus Pulse feed, newest first; `category`, `organization` (case-insensitive), paging. |
+| `GET` | `/api/v1/announcements/{id}` | Authenticated | One notice. |
+| `POST` | `/api/v1/announcements` | `ROLE_TEACHER` / `ROLE_MODERATOR` / `ROLE_ADMIN` | Publish a verified notice; students get `403`, so the feed never carries rumours. |
+| `PATCH` | `/api/v1/playgrounds/{id}/milestones/{milestoneId}` | `LEAD` / `CONTRIBUTOR` | `COMPLETED` marks the milestone reached (records `completedAt` / `completedBy`); `PENDING` reopens it. |
+| `POST` | `/api/v1/opportunities/{id}/playgrounds` | Authenticated (`LEAD` to link an existing playground) | Form a team: `{}` one-click PUBLIC "`<title>` Team" playground, `{"newPlayground": {...}}`, or `{"playgroundId": n}`. `201` new link, `200` already linked. |
+| `GET` | `/api/v1/opportunities/{id}/playgrounds` | Authenticated | Teams for the contest the caller may see (PUBLIC, or PRIVATE ones they belong to). |
+
+**Session scheduler:**
+- Every time is an `Instant` stored as `TIMESTAMP WITH TIME ZONE` and returned as UTC (`...Z`). A client may send any offset: `2026-11-22T20:00:00+06:00` is stored and returned as `2026-11-22T14:00:00Z`; the UI renders local time.
+- `endsAt` is derived (`scheduledAt + durationMinutes`), never stored, so it can't drift.
+- A session that overlaps another one in the same circle is rejected with `409`. The check treats sessions as half-open intervals, so back-to-back sessions are allowed. It is a check-then-insert, so two members creating clashing sessions in the same instant could both succeed; a PostgreSQL exclusion constraint would close that gap if it ever matters.
+- Sessions and resources are members-only so the open directory cannot be scraped for meeting links.
+
+**Transactional outbox (ADR-011):** events go to the shared `outbox_events` table through Member A's `OutboxEventPublisher` for Member B's notification engine. Each payload carries `recipientIds`.
+
+| Event | Aggregate | Written when | Recipients |
+|---|---|---|---|
+| `TASK_ASSIGNED` | `PROJECT_TASK` | A card is created for, or handed to, someone other than the actor | The new assignee |
+| `MILESTONE_REACHED` | `PROJECT_MILESTONE` | A milestone goes from `PENDING` to `COMPLETED` | Every member except the completer |
+| `STUDY_SESSION_SCHEDULED` | `STUDY_SESSION` | A session is scheduled (payload includes `courseCode`) | Every circle member except the scheduler |
+
+- The emitters are `@Transactional(propagation = MANDATORY)`: they refuse to run outside the transaction that changes the state, so an event can never be committed without its change, or survive a rollback.
+- `TASK_ASSIGNED` is emitted after the versioned write succeeds, so a `409` card update leaves no stray event. Self-assignment, re-saving the same assignee, moving or unassigning a card notify nobody.
+- Completion is a single `UPDATE ... SET status = 'COMPLETED' WHERE id = ? AND status = 'PENDING'`. When several teammates tick a milestone at once, PostgreSQL's row lock lets exactly one statement match, so exactly one `MILESTONE_REACHED` is written (proven by a 6-thread test). Completing again is a no-op.
+
+**Opportunity -> Playground (Day 5):** the playground is created and linked in one transaction, so there is never an orphan team without its contest. Links use `INSERT ... ON CONFLICT DO NOTHING` (idempotent) and record `linked_by` / `linked_at`. The playground header now lists `linkedOpportunities`.
+
+**No N+1:** a directory page costs a fixed five queries (circles, member counts, the viewer's roles, next session starts, courses) whatever its size. Members, sessions, resources and decision/link lists are JPQL constructor projections joining the user row. The announcement feed loads every author on a page in one query.
+
+**Migration `V12__study_circles_pulse_and_collaboration_links.sql`** (Member C owns V3, V6, V9, V12):
+- `CHECK`s: circle member role, session duration 15-480, resource category, announcement category.
+- `study_sessions.created_by`; `project_milestones.completed_at` / `completed_by`; `opportunity_playgrounds.linked_by` / `linked_at`.
+- Indexes: circle members by user, circles by course and by creation date, sessions by circle and start, resources by circle and date, the unfiltered announcement feed, and links by playground.
+
+**Not in Week 3 (by plan):** the frontend for all of this (Weeks 4-5) and linking circles and playgrounds to shared chat (`conversation_id`, Week 6).
+
 ---
 
 ## 3. Sprint-by-Sprint Development Log
@@ -136,7 +184,7 @@ flowchart LR
 |---|---|---|---|
 | **Week 1** | Nov 10 – Nov 20 | ✅ `V6` opportunity hardening migration; `Opportunity` / `OpportunityBookmark` entities, repositories & DTOs; Ranking Strategy Pattern (`deadline`, `recent`) with resolver; multi-facet browse API; detail, submit, moderator verify; idempotent race-safe bookmarks; 400 handling for malformed requests; 24 new tests | [PR #5](https://github.com/KUETcord/KUETcord/pull/5) (`feature/opportunities-contest-board`) |
 | **Week 2** | Nov 17 – Nov 23 | ✅ `V9` playground/Kanban hardening migration; `Playground`, `PlaygroundMember`, `ProjectTask`, `ProjectMilestone`, `ProjectDecision` entities; `LEAD` / `CONTRIBUTOR` / `VIEWER` access policy (private playgrounds hidden with 404, archived playgrounds frozen); playground create / list / detail / PATCH / invite APIs; Kanban board + task CRUD with `@Version` optimistic locking mapped to 409; milestones and decision log endpoints; N+1-free projections; 38 new tests | [PR #8](https://github.com/KUETcord/KUETcord/pull/8) (`feature/playgrounds-kanban-board`) |
-| **Week 3** | Nov 24 – Nov 30 | Study Circles, Sessions scheduler, Campus Pulse, Outbox event emitters (`TASK_ASSIGNED`) | PR #17, PR #20 |
+| **Week 3** | Nov 24 – Nov 30 | ✅ `V12` migration; Study Circles (directory with course filter, join, members-only sessions and resources); UTC session scheduler with overlap guard; Campus Pulse feed with staff-only publishing; transactional outbox events `TASK_ASSIGNED`, `MILESTONE_REACHED`, `STUDY_SESSION_SCHEDULED`; milestone completion (exactly-once under races); opportunity -> playground team formation; 32 new tests | `feature/study-circles-pulse-outbox` |
 | **Week 4** | Dec 01 – Dec 07 | Frontend Contest directory with filters, Interactive Kanban Board (`@dnd-kit/core`) | PR #23, PR #26 |
 | **Week 5** | Dec 08 – Dec 14 | Study Circle Hub, Pomodoro widget, k6 load testing on task updates, N+1 query elimination | PR #30, PR #33 |
 | **Week 6** | Dec 15 – Dec 21 | Link Playground/Study chat to Member B's engine, presentation rehearsal, demo polish | PR #37 |
@@ -174,8 +222,14 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 | **Integration** | `ProjectJournalControllerIntegrationTest` (3) | `/milestones`, `/decisions` | PASS | Milestones soonest first with `overdue`; decision log newest first with author; VIEWER cannot write |
 | **Concurrency / DB** | `ProjectTaskConcurrencyIntegrationTest` (1) | `ProjectTaskService.update` | PASS | 6 simultaneous moves of one card from version 0: exactly one wins, all others get optimistic-lock errors, final version 1 |
 | **Automated CI (Week 2)** | `ci.yml` run [44923408358](https://github.com/KUETcord/KUETcord/actions/runs/44923408358) | Backend, frontend, Docker, PR title | PASS | Backend: `Tests run: 142, Failures: 0, Errors: 0, Skipped: 0` on PostgreSQL 16 + Java 21 |
-| **Integration Testing** | `OutboxTaskEmitterTest` | `TaskService.assignTask` | Planned (Week 3) | Outbox row created in same atomic transaction |
-| **Integration / Relation**| `OpportunityLinkTest` | `POST /api/v1/opportunities/{id}/playgrounds` | Planned (Week 3) | Join table `opportunity_playgrounds` populated |
+| **Integration / Outbox** | `PlaygroundOutboxIntegrationTest` (5) | `ProjectTaskService`, `ProjectMilestoneService` | PASS | `TASK_ASSIGNED` with assignee, actor and recipients; none for self-assign / same assignee / move / unassign / a 409 update; `MILESTONE_REACHED` once, to every other member; idempotent re-complete; reopen and reach again; VIEWER 403 |
+| **Concurrency / Atomicity** | `MilestoneCompletionConcurrencyIntegrationTest` (2) | `ProjectMilestoneService`, `PlaygroundOutboxEmitter` | PASS | 6 simultaneous completions: all succeed, exactly one event; emitter refuses to run outside a transaction |
+| **Integration / Relation** | `OpportunityPlaygroundControllerIntegrationTest` (4) | `/api/v1/opportunities/{id}/playgrounds` | PASS | One-click team (title, description, category tag, LEAD, `linkedOpportunities`); LEAD-only linking, 201 then 200; PRIVATE teams hidden from outsiders; `linked_by` recorded; 400/404 cases; FK enforced |
+| **Unit / Contract** | `OpportunityPlaygroundDefaultsTest` (3) | `OpportunityPlaygroundLinkService` | PASS | Default team fits the 150-char title and 5000-char statement limits; ambiguous link request rejected |
+| **Integration (MockMvc + PostgreSQL)** | `StudyCircleControllerIntegrationTest` (5) | `/api/v1/study-circles/**` | PASS | HOST on create with catalog course; unknown course 404; idempotent join (201/200); course / name / mine filters with counts, my role, next session; LIKE wildcards literal; next session hidden from outsiders; V12 `CHECK` |
+| **Integration / Scheduler** | `StudySessionControllerIntegrationTest` (5) | `/sessions`, `/resources` | PASS | `+06:00` input returned as UTC with derived `endsAt`; `STUDY_SESSION_SCHEDULED` to the other members with course code; overlap 409, back-to-back allowed; past / 10-min / 600-min 400; upcoming vs history; members-only; resources newest first |
+| **Security / RBAC** | `AnnouncementControllerIntegrationTest` (4) | `/api/v1/announcements/**` | PASS | Teacher and moderator publish, student 403; newest first; category and case-insensitive organization filters; paging; 400/404; V12 `CHECK` |
+| **Contract / Validation** | `StudyRequestValidationTest` (3), `StudyCircleSpecificationsTest` (1) | Session / resource DTOs, directory search | PASS | Duration bounds and default; future start; derived `endsAt`; http(s) links; LIKE escaping |
 | **Performance & Load** | `k6_kanban_read.js` | `GET /api/v1/playgrounds/{id}/tasks` | Planned (Week 5) | p95: 32ms at 40 VUs; zero N+1 queries |
 | **Interaction & Drag** | `KanbanDragDropTest` | `<PlaygroundKanbanBoard />` | Planned (Week 4) | Card dragged between columns updates state |
 | **Adversarial UI (`break-ui`)**| `KanbanTaskBreakUiTest` | `<TaskCard />` | Planned (Week 4) | 200-word task description cleanly clamps |
@@ -196,6 +250,10 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
   - *Context:* teammates drag and re-assign the same cards during a hackathon. Last-write-wins silently loses an assignee or a status change; pessimistic `SELECT ... FOR UPDATE` would hold row locks across user think-time and does not fit stateless REST.
   - *Decision:* `@Version` on `project_tasks` and `playgrounds`. Every `PATCH` / `DELETE` must send the version the client last saw; a mismatch is rejected before any change, and a true race is caught by the versioned `UPDATE`. Both become `409 Conflict`.
   - *Consequences:* no locks are held between requests and no write is lost. The cost is that a client must reload and retry on 409, which the Week 4 UI handles with a reload banner. Making `expectedVersion` mandatory (400 when missing) means no client can opt out by accident.
+- **ADR-011:** Collaboration Notifications through the Transactional Outbox, Emitted Exactly Once.
+  - *Context:* assigning a card, reaching a milestone and scheduling a study session must notify people. Sending from the request thread (or a post-commit listener) can lose the notification if the process dies after commit, or send one for a change that rolled back.
+  - *Decision:* write the event to `outbox_events` in the same transaction as the change, through `@Transactional(propagation = MANDATORY)` emitters that cannot run on their own. Events that could be triggered twice by a race (milestone completion) are guarded by a conditional `UPDATE ... WHERE status = 'PENDING'`, and an event is written only when that statement changed a row.
+  - *Consequences:* a notification exists if and only if its change committed, and Member B's worker can deliver it later with retries. Payloads include `recipientIds` so the worker does not re-query membership. Rows stay `PENDING` until Member B's notification worker picks them up (the `idx_outbox_poll` index and retry columns from V5 are already in place for it).
 
 ---
 
