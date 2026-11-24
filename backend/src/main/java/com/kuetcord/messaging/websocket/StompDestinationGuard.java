@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
  *   SUBSCRIBE /user/queue/**                      -> any authenticated user (resolved per session)
  *   SEND      /app/conversations/{id}/messages    -> ConversationAccessPolicy.canSend
  *   SEND      /app/conversations/{id}/typing      -> ConversationAccessPolicy.canAccess
+ *   SEND      /app/presence                       -> any authenticated user (own sessions only)
  *   anything else                                 -> denied
  * </pre>
  * Denying direct SENDs to {@code /topic/**} stops clients from forging broadcasts that bypass
@@ -40,6 +41,7 @@ public class StompDestinationGuard implements ChannelInterceptor {
     private static final Pattern SEND_MESSAGE = Pattern.compile("^/app/conversations/(\\d+)/messages$");
     private static final Pattern SEND_TYPING = Pattern.compile("^/app/conversations/(\\d+)/typing$");
     private static final String PRESENCE_TOPIC = "/topic/presence";
+    private static final String SEND_PRESENCE = "/app/presence";
     private static final String USER_QUEUE_PREFIX = "/user/queue/";
 
     private final ConversationAccessPolicy accessPolicy;
@@ -90,6 +92,9 @@ public class StompDestinationGuard implements ChannelInterceptor {
             }
             Matcher typing = SEND_TYPING.matcher(destination);
             if (typing.matches() && accessPolicy.canAccess(Long.valueOf(typing.group(1)), userId)) {
+                return;
+            }
+            if (SEND_PRESENCE.equals(destination)) {
                 return;
             }
         }

@@ -193,7 +193,65 @@ class WebSocketStompIntegrationTest {
         aliceClient.session.disconnect();
     }
 
+    @Test
+    @DisplayName("Multi-tab presence over real sockets: ONLINE on first tab, still ONLINE after closing one of two, OFFLINE after both")
+    void shouldTrackMultiTabPresenceOverRealSockets() throws Exception {
+        Client watcher = connect(dave);
+        BlockingQueue<Map<String, Object>> presence = subscribe(watcher, dave, "/topic/presence");
+
+        Client tab1 = connect(alice);
+        assertEquals("ONLINE", nextPresenceFor(presence, alice).get("status"));
+        Client tab2 = connect(alice);
+
+        tab1.session.disconnect();
+        assertNull(nextPresenceFor(presence, alice, 1), "Closing 1 of 2 tabs must not broadcast OFFLINE");
+
+        tab2.session.disconnect();
+        assertEquals("OFFLINE", nextPresenceFor(presence, alice).get("status"));
+        watcher.session.disconnect();
+    }
+
+    @Test
+    @DisplayName("Typing pings reach other members on the typing topic and are throttled server-side")
+    void shouldBroadcastThrottledTypingIndicators() throws Exception {
+        Client aliceClient = connect(alice);
+        Client bobClient = connect(bob);
+        BlockingQueue<Map<String, Object>> typing = subscribe(bobClient, bob, "/topic/conversations/" + groupId + "/typing");
+
+        StompHeaders headers = new StompHeaders();
+        headers.setDestination("/app/conversations/" + groupId + "/typing");
+        aliceClient.session.send(headers, Map.of("conversationId", groupId));
+        aliceClient.session.send(headers, Map.of("conversationId", groupId));
+
+        Map<String, Object> event = typing.poll(TIMEOUT_S, TimeUnit.SECONDS);
+        assertNotNull(event, "Bob should see Alice typing");
+        assertEquals(alice.id().intValue(), ((Number) event.get("userId")).intValue());
+        assertNull(typing.poll(1, TimeUnit.SECONDS), "Second ping within 2 s is throttled");
+
+        aliceClient.session.disconnect();
+        bobClient.session.disconnect();
+    }
+
     // ----------------------------------------------------------------- helpers
+
+    private Map<String, Object> nextPresenceFor(BlockingQueue<Map<String, Object>> events, TestUser user) throws InterruptedException {
+        Map<String, Object> event = nextPresenceFor(events, user, TIMEOUT_S);
+        assertNotNull(event, "No presence event for user " + user.id());
+        return event;
+    }
+
+    /** Skips other users' presence events (other tests' sessions may still be closing). */
+    private Map<String, Object> nextPresenceFor(BlockingQueue<Map<String, Object>> events, TestUser user, long timeoutSeconds)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        while (System.nanoTime() < deadline) {
+            Map<String, Object> event = events.poll(Math.max(1, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())), TimeUnit.MILLISECONDS);
+            if (event != null && ((Number) event.get("userId")).longValue() == user.id()) {
+                return event;
+            }
+        }
+        return null;
+    }
 
     private boolean sendWithReceipt(Client client, Map<String, Object> payload) throws InterruptedException {
         StompHeaders headers = new StompHeaders();

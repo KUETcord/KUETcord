@@ -4,6 +4,7 @@ import com.kuetcord.common.exception.BadRequestException;
 import com.kuetcord.common.exception.ForbiddenException;
 import com.kuetcord.messaging.dto.SendMessageFrame;
 import com.kuetcord.messaging.dto.StompErrorDto;
+import com.kuetcord.messaging.presence.TypingRegistry;
 import com.kuetcord.messaging.service.MessageBroadcaster;
 import com.kuetcord.messaging.service.MessageService;
 import org.slf4j.Logger;
@@ -41,13 +42,16 @@ public class ChatMessageController {
     private final MessageService messageService;
     private final MessageBroadcaster broadcaster;
     private final MessageChannel clientOutboundChannel;
+    private final TypingRegistry typingRegistry;
 
     public ChatMessageController(MessageService messageService,
                                  MessageBroadcaster broadcaster,
-                                 @Qualifier("clientOutboundChannel") MessageChannel clientOutboundChannel) {
+                                 @Qualifier("clientOutboundChannel") MessageChannel clientOutboundChannel,
+                                 TypingRegistry typingRegistry) {
         this.messageService = messageService;
         this.broadcaster = broadcaster;
         this.clientOutboundChannel = clientOutboundChannel;
+        this.typingRegistry = typingRegistry;
     }
 
     @MessageMapping("/conversations/{conversationId}/messages")
@@ -59,6 +63,7 @@ public class ChatMessageController {
         MessageService.SendResult result = messageService.send(conversationId, senderId, frame.content(), frame.idempotencyKey());
 
         sendReceipt(headers);
+        typingRegistry.clear(conversationId, senderId);
         if (result.created()) {
             broadcaster.broadcast(result.message());
         }

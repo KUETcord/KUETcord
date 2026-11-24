@@ -36,11 +36,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final StompDestinationGuard destinationGuard;
     private final StompSecurityErrorHandler errorHandler;
     private final String[] allowedOrigins;
+    /** {@code kuetcord.websocket.heartbeat-ms}; 10 s in every real profile, shortened only by the chaos test. */
+    private final long heartbeatMs;
 
     public WebSocketConfig(StompAuthChannelInterceptor authInterceptor,
                            StompDestinationGuard destinationGuard,
                            StompSecurityErrorHandler errorHandler,
-                           @Value("${kuetcord.cors.allowed-origins:http://localhost:5173}") String allowedOriginsRaw) {
+                           @Value("${kuetcord.cors.allowed-origins:http://localhost:5173}") String allowedOriginsRaw,
+                           @Value("${kuetcord.websocket.heartbeat-ms:" + HEARTBEAT_MS + "}") long heartbeatMs) {
+        this.heartbeatMs = heartbeatMs;
         this.authInterceptor = authInterceptor;
         this.destinationGuard = destinationGuard;
         this.errorHandler = errorHandler;
@@ -69,7 +73,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         heartbeatScheduler.initialize();
 
         registry.enableSimpleBroker("/topic", "/queue")
-                .setHeartbeatValue(new long[]{HEARTBEAT_MS, HEARTBEAT_MS})
+                .setHeartbeatValue(new long[]{heartbeatMs, heartbeatMs})
                 .setTaskScheduler(heartbeatScheduler);
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");

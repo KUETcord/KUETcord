@@ -5,6 +5,7 @@ import com.kuetcord.common.dto.ApiResponse;
 import com.kuetcord.messaging.dto.MessagePageDto;
 import com.kuetcord.messaging.dto.ReadStateDto;
 import com.kuetcord.messaging.dto.ReadStateRequest;
+import com.kuetcord.messaging.dto.SyncResponseDto;
 import com.kuetcord.messaging.service.MessageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,16 @@ public class MessageController {
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Integer limit) {
         return ResponseEntity.ok(ApiResponse.ok(messageService.history(id, principal.id(), cursor, limit)));
+    }
+
+    @GetMapping("/sync")
+    @PreAuthorize("@conversationSecurity.isParticipant(#id)")
+    public ResponseEntity<ApiResponse<SyncResponseDto>> sync(
+            @PathVariable Long id,
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @RequestParam Long afterMessageId,
+            @RequestParam(required = false) Integer limit) {
+        return ResponseEntity.ok(ApiResponse.ok(messageService.sync(id, principal.id(), afterMessageId, limit)));
     }
 
     @PostMapping("/read-state")

@@ -7,6 +7,7 @@ import com.kuetcord.messaging.access.ConversationAccessPolicy;
 import com.kuetcord.messaging.dto.ChatMessageDto;
 import com.kuetcord.messaging.dto.MessagePageDto;
 import com.kuetcord.messaging.dto.ReadStateDto;
+import com.kuetcord.messaging.dto.SyncResponseDto;
 import com.kuetcord.messaging.model.Message;
 import com.kuetcord.messaging.model.MessageMention;
 import com.kuetcord.messaging.repository.ConversationReadStateRepository;
@@ -38,6 +39,8 @@ public class MessageService {
     public static final int MAX_IDEMPOTENCY_KEY_LENGTH = 64;
     public static final int DEFAULT_PAGE_SIZE = 30;
     public static final int MAX_PAGE_SIZE = 100;
+    public static final int DEFAULT_SYNC_SIZE = 50;
+    public static final int MAX_SYNC_SIZE = 200;
 
     private final MessageRepository messageRepository;
     private final MessageMentionRepository mentionRepository;
@@ -95,6 +98,27 @@ public class MessageService {
         List<ChatMessageDto> dtos = page.stream().map(m -> toDto(m, names.get(m.getSenderId()))).toList();
         Long nextCursor = hasMore && !page.isEmpty() ? page.get(0).getId() : null;
         return new MessagePageDto(conversationId, dtos, nextCursor, hasMore);
+    }
+
+    /**
+     * Gap catch-up after a reconnect: messages strictly newer than {@code afterMessageId}, oldest first.
+     * The client keeps its DOM and scroll position and simply appends what it missed.
+     */
+    public SyncResponseDto sync(Long conversationId, Long userId, Long afterMessageId, Integer limit) {
+        accessPolicy.requireAccess(conversationId, userId);
+        if (afterMessageId == null || afterMessageId < 0) {
+            throw new BadRequestException("afterMessageId must be zero or a positive message id");
+        }
+        int pageSize = limit == null ? DEFAULT_SYNC_SIZE : Math.min(Math.max(limit, 1), MAX_SYNC_SIZE);
+
+        List<Message> found = messageRepository.findPageAfter(conversationId, afterMessageId, PageRequest.of(0, pageSize + 1));
+        boolean hasMore = found.size() > pageSize;
+        List<Message> page = hasMore ? found.subList(0, pageSize) : found;
+
+        Map<Long, String> names = senderNames(page.stream().map(Message::getSenderId).collect(Collectors.toSet()));
+        return new SyncResponseDto(conversationId,
+                page.stream().map(m -> toDto(m, names.get(m.getSenderId()))).toList(),
+                hasMore);
     }
 
     @Transactional
