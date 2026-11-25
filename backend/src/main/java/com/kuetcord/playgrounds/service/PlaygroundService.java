@@ -15,6 +15,7 @@ import com.kuetcord.playgrounds.model.Playground;
 import com.kuetcord.playgrounds.model.PlaygroundPermission;
 import com.kuetcord.playgrounds.model.PlaygroundRole;
 import com.kuetcord.playgrounds.model.TaskStatus;
+import com.kuetcord.playgrounds.repository.OpportunityPlaygroundLinkRepository;
 import com.kuetcord.playgrounds.repository.PlaygroundMemberRepository;
 import com.kuetcord.playgrounds.repository.PlaygroundRepository;
 import com.kuetcord.playgrounds.repository.ProjectTaskRepository;
@@ -43,6 +44,7 @@ public class PlaygroundService {
     private final PlaygroundRepository playgroundRepository;
     private final PlaygroundMemberRepository memberRepository;
     private final ProjectTaskRepository taskRepository;
+    private final OpportunityPlaygroundLinkRepository linkRepository;
     private final UserRepository userRepository;
     private final PlaygroundAccessPolicy accessPolicy;
 
@@ -143,6 +145,7 @@ public class PlaygroundService {
                 playground.getVersion(),
                 memberRepository.findMemberDtos(playground.getId()),
                 Collections.unmodifiableMap(counts),
+                linkRepository.findLinkedOpportunities(playground.getId()),
                 playground.getCreatedAt(),
                 playground.getUpdatedAt());
     }

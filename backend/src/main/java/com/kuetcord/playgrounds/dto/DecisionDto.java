@@ -1,5 +1,7 @@
 package com.kuetcord.playgrounds.dto;
 
+import com.kuetcord.common.dto.UserRefDto;
+
 import java.time.Instant;
 
 public record DecisionDto(

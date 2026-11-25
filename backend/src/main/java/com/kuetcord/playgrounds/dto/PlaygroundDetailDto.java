@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Workspace header: metadata, members and per-column task counts.
+ * Workspace header: metadata, members, per-column task counts and the contests the team was formed for.
  * {@code myRole} is {@code null} when a non-member views a PUBLIC playground; {@code version} must be
  * echoed back as {@code expectedVersion} on PATCH.
  */
@@ -28,6 +28,7 @@ public record PlaygroundDetailDto(
         Long version,
         List<PlaygroundMemberDto> members,
         Map<TaskStatus, Long> taskCounts,
+        List<LinkedOpportunityDto> linkedOpportunities,
         Instant createdAt,
         Instant updatedAt
 ) {

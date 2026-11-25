@@ -298,12 +298,13 @@ Endpoint: `/ws` (SockJS) or `/ws/websocket` (native WebSocket). Origins follow `
 - `POST /api/v1/opportunities/{id}/bookmark` — Bookmark opportunity (idempotent)
 - `DELETE /api/v1/opportunities/{id}/bookmark` — Remove bookmark (idempotent)
 - `POST /api/v1/opportunities/{id}/verify` — Verify listing (`ROLE_MODERATOR` / `ROLE_ADMIN`)
-- `POST /api/v1/opportunities/{id}/playgrounds` — Link contest to Playground *(Week 3)*
+- `POST /api/v1/opportunities/{id}/playgrounds` — Form a team for the contest. Body `{}` creates a PUBLIC "`<title>` Team" playground (caller becomes `LEAD`); `{"newPlayground": {...}}` creates one with those details; `{"playgroundId": n}` links an existing playground (`LEAD` only). `201` when newly linked, `200` if it already was
+- `GET /api/v1/opportunities/{id}/playgrounds` — Teams formed for the contest that the caller can see (`PUBLIC`, or `PRIVATE` ones they belong to)
 
 ### Project Playgrounds & Study Circles (Member C)
 - `GET /api/v1/playgrounds` — "My playgrounds" with `myRole` and `memberCount`
 - `POST /api/v1/playgrounds` — Create a playground (`title`, `problemStatement`, `tags` (max 8), `visibility` `PUBLIC`/`PRIVATE`, `repoUrl`, `demoUrl`); the creator becomes `LEAD`; returns `201`
-- `GET /api/v1/playgrounds/{id}` — Workspace header: members, per-column task counts, `version` (members; anyone for `PUBLIC`; a `PRIVATE` playground is `404` to non-members)
+- `GET /api/v1/playgrounds/{id}` — Workspace header: members, per-column task counts, `linkedOpportunities`, `version` (members; anyone for `PUBLIC`; a `PRIVATE` playground is `404` to non-members)
 - `PATCH /api/v1/playgrounds/{id}` — Edit metadata / `status` (`PLANNING`, `IN_PROGRESS`, `COMPLETED`, `ARCHIVED`); `LEAD` only; requires `expectedVersion` (stale: `409`)
 - `POST /api/v1/playgrounds/{id}/members` — Invite a student as `LEAD` / `CONTRIBUTOR` / `VIEWER` (`LEAD` only; already a member: `409`)
 - `GET /api/v1/playgrounds/{id}/tasks` — Kanban board: 5 ordered columns (`BACKLOG`, `TODO`, `IN_PROGRESS`, `REVIEW`, `DONE`) with card `position`, `assignee`, `version`
@@ -312,10 +313,24 @@ Endpoint: `/ws` (SockJS) or `/ws/websocket` (native WebSocket). Origins follow `
 - `PATCH /api/v1/playgrounds/{id}/tasks/{taskId}` — Move / assign / edit a task; requires `expectedVersion`; `clearAssignee`, `clearDueDate`; stale or concurrent change: `409 Conflict`
 - `DELETE /api/v1/playgrounds/{id}/tasks/{taskId}?expectedVersion=n` — Delete a task (`204`; stale version: `409`)
 - `GET/POST /api/v1/playgrounds/{id}/milestones` — Project timeline, soonest first, with derived `overdue`
+- `PATCH /api/v1/playgrounds/{id}/milestones/{milestoneId}` — `{"status": "COMPLETED"}` marks it reached (idempotent; records `completedAt` / `completedBy`), `"PENDING"` reopens it
 - `GET/POST /api/v1/playgrounds/{id}/decisions` — Append-only decision log, newest first
 - Writes to an `ARCHIVED` playground return `409` until a lead reopens it
-- `GET/POST /api/v1/study-circles` — Browse or create peer study circles (`HOST`, `ATTENDEE`)
-- `GET/POST /api/v1/announcements` — Browse or publish Campus Pulse notices
+- Outbox events written in the same transaction as the change: `TASK_ASSIGNED` (card created for / handed to someone else) and `MILESTONE_REACHED` (once per completion, to every other member)
+
+### Study Circles (Member C)
+- `GET /api/v1/study-circles` — Directory, newest first. Params: `courseOfferingId`, `q` (name search), `mine`, `page`, `size` (max 50). Cards carry `course`, `memberCount`, `myRole`, `nextSessionAt`
+- `POST /api/v1/study-circles` — Create a circle (`name`, `description`, optional `courseOfferingId` from the CT Hub catalog); the creator becomes `HOST`; returns `201`
+- `GET /api/v1/study-circles/{id}` — Circle page: course, creator, members, `resourceCount`; `nextSession` for members only
+- `POST /api/v1/study-circles/{id}/join` — Join as `ATTENDEE` (`201`; already a member: `200`, idempotent)
+- `GET /api/v1/study-circles/{id}/sessions` — Upcoming sessions (including one in progress); `includePast=true` for history. Members only
+- `POST /api/v1/study-circles/{id}/sessions` — Schedule (`title`, `scheduledAt` ISO-8601 in the future, `durationMinutes` 15-480 default 60, `agenda`, `locationOrLink`). Times are UTC; overlapping another session of the circle is `409`. Writes `STUDY_SESSION_SCHEDULED` to the outbox. Members only
+- `GET/POST /api/v1/study-circles/{id}/resources` — Shared links (`title`, http(s) `url`, `category` `NOTES` / `QUESTION_BANK` / `SLIDES` / `RECORDING`), newest first. Members only
+
+### Campus Pulse (Member C)
+- `GET /api/v1/announcements` — Feed, newest first. Params: `category` (`SEMINAR`, `CLUB`, `ACADEMIC`, `CAREER`), `organization` (case-insensitive), `page`, `size` (max 50)
+- `GET /api/v1/announcements/{id}` — One notice
+- `POST /api/v1/announcements` — Publish (`organization`, `category`, `title`, `body`, `sourceUrl`); `ROLE_TEACHER` / `ROLE_MODERATOR` / `ROLE_ADMIN` only, students get `403`
 
 ---
 

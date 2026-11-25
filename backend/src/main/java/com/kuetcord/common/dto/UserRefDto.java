@@ -1,4 +1,4 @@
-package com.kuetcord.playgrounds.dto;
+package com.kuetcord.common.dto;
 
 /** Minimal user reference shown on cards and log entries (assignee, author). */
 public record UserRefDto(Long id, String displayName) {
