@@ -1,35 +1,30 @@
 # ==============================================================================
 # Multi-Stage Dockerfile for KUETcord React 18 + Vite Frontend
+# Fail-Fast Production Build + Hardened Nginx Reverse Proxy
 # ==============================================================================
 
 # Stage 1: Build the production static assets
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+ARG VITE_API_BASE_URL=/api/v1
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 COPY package*.json ./
-RUN npm ci || true
+RUN npm ci
 
 COPY . .
-RUN npm run build || mkdir -p dist && touch dist/index.html
+RUN npm run build
 
-# Stage 2: Serve via Nginx Alpine
+# Stage 2: Serve via Nginx Alpine with SPA routing + /api & /ws reverse proxy
 FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Custom nginx reverse proxy configuration for client-side routing
-RUN echo 'server { \
-    listen 80; \
-    location / { \
-        root /usr/share/nginx/html; \
-        index index.html; \
-        try_files $$uri $$uri/ /index.html; \
-    } \
-    location /actuator/health { \
-        proxy_pass http://backend:8080/actuator/health; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
 
+CMD ["nginx", "-g", "daemon off;"]

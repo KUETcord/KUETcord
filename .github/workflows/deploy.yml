@@ -18,8 +18,9 @@ jobs:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         if: env.RENDER_DEPLOY_HOOK_URL != ''
         run: |
-          echo "Triggering backend deployment..."
-          curl -s -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" || echo "Deploy hook triggered"
+          echo "Triggering Render backend deployment webhook..."
+          curl --retry 3 --retry-delay 5 -s -S -f -X POST "${RENDER_DEPLOY_HOOK_URL}"
+          echo "Render backend deployment webhook accepted."
 
   deploy-frontend:
     name: Deploy Frontend to Cloud (Vercel / Static Host)
@@ -28,21 +29,29 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Deploy to Vercel
+        working-directory: frontend
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         if: env.VERCEL_TOKEN != ''
         run: |
-          npx vercel --token ${{ secrets.VERCEL_TOKEN }} --prod --yes
+          npx vercel --token "${VERCEL_TOKEN}" --prod --yes
 
   smoke-test:
     name: Post-Deployment Health Check & Smoke Test
     needs: [deploy-backend, deploy-frontend]
     runs-on: ubuntu-latest
     steps:
-      - name: Await Service Startup & Verify Backend Actuator Health
+      - name: Await Service Startup & Verify Backend Actuator Health & Prometheus
         env:
           DEPLOYED_BACKEND_URL: ${{ secrets.DEPLOYED_BACKEND_URL }}
         if: env.DEPLOYED_BACKEND_URL != ''
@@ -50,6 +59,7 @@ jobs:
           echo "Waiting 30 seconds for cloud instance warm-up..."
           sleep 30
           echo "Pinging ${DEPLOYED_BACKEND_URL}/actuator/health..."
-          curl --retry 5 --retry-delay 10 --retry-max-time 120 -s -f "${DEPLOYED_BACKEND_URL}/actuator/health" | grep "UP"
-          echo "Backend deployment verified healthy!"
-
+          curl --retry 5 --retry-delay 10 --retry-max-time 120 -s -S -f "${DEPLOYED_BACKEND_URL}/actuator/health" | grep -q '"status":"UP"'
+          echo "Checking ${DEPLOYED_BACKEND_URL}/actuator/prometheus..."
+          curl --retry 3 --retry-delay 5 -s -S -f "${DEPLOYED_BACKEND_URL}/actuator/prometheus" | grep -q 'jvm_memory_used_bytes'
+          echo "Backend deployment verified healthy and observable!"

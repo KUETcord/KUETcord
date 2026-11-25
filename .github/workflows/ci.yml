@@ -93,8 +93,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Docker Compose Configuration
-        run: |
-          docker compose config || echo "Docker compose valid"
+        run: docker compose config --quiet
+
+      - name: Build Production Backend Docker Image
+        run: docker build -t kuetcord-backend:ci ./backend
+
+      - name: Build Production Frontend Docker Image
+        run: docker build -t kuetcord-frontend:ci ./frontend
 
   pr-title-lint:
     name: Validate Semantic PR Title

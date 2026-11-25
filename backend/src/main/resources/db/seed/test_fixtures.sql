@@ -9,7 +9,8 @@ INSERT INTO users (id, email, display_name, username, password_hash, department,
 (1, 'student.1907001@stud.kuet.ac.bd', 'Tashfiq Rahman (CR)', 'tashfiq_cr', '$2a$12$K8pQ0q2v6QGZ5oY9N1/cXe5m9mNlZgQ9jUoE/GzO7aH6V3b8o9vC6', 'CSE', '2k19', NOW(), 'ACTIVE'),
 (2, 'student.1907002@stud.kuet.ac.bd', 'Sadia Afrin', 'sadia_afrin', '$2a$12$K8pQ0q2v6QGZ5oY9N1/cXe5m9mNlZgQ9jUoE/GzO7aH6V3b8o9vC6', 'CSE', '2k19', NOW(), 'ACTIVE'),
 (3, 'student.2005010@stud.kuet.ac.bd', 'Tanvir Ahmed', 'tanvir_eee', '$2a$12$K8pQ0q2v6QGZ5oY9N1/cXe5m9mNlZgQ9jUoE/GzO7aH6V3b8o9vC6', 'EEE', '2k20', NOW(), 'ACTIVE'),
-(4, 'moderator@stud.kuet.ac.bd', 'Campus Safety Moderator', 'kuet_mod', '$2a$12$K8pQ0q2v6QGZ5oY9N1/cXe5m9mNlZgQ9jUoE/GzO7aH6V3b8o9vC6', 'CSE', 'Faculty/Staff', NOW(), 'ACTIVE')
+(4, 'moderator@stud.kuet.ac.bd', 'Campus Safety Moderator', 'kuet_mod', '$2a$12$K8pQ0q2v6QGZ5oY9N1/cXe5m9mNlZgQ9jUoE/GzO7aH6V3b8o9vC6', 'CSE', 'Faculty/Staff', NOW(), 'ACTIVE'),
+(5, 'hasan@cse.kuet.ac.bd', 'Dr. Md. Hasanuzzaman', 'dr_hasan_cse', '$2a$12$K8pQ0q2v6QGZ5oY9N1/cXe5m9mNlZgQ9jUoE/GzO7aH6V3b8o9vC6', 'CSE', 'Faculty', NOW(), 'ACTIVE')
 ON CONFLICT (id) DO NOTHING;
 
 -- Reset identity sequence
@@ -23,6 +24,10 @@ INSERT INTO user_roles (user_id, role_id) VALUES
 (3, 1), -- Tanvir: ROLE_STUDENT
 (4, 1), -- Moderator: ROLE_STUDENT
 (4, 3)  -- Moderator: ROLE_MODERATOR
+ON CONFLICT DO NOTHING;
+
+INSERT INTO user_roles (user_id, role_id)
+SELECT 5, id FROM roles WHERE name = 'ROLE_TEACHER'
 ON CONFLICT DO NOTHING;
 
 -- 3. Seed Course Offerings
@@ -44,10 +49,10 @@ INSERT INTO course_follows (user_id, course_offering_id) VALUES
 ON CONFLICT DO NOTHING;
 
 -- 5. Seed CT Events
-INSERT INTO ct_events (id, course_offering_id, title, scheduled_at, duration_minutes, covered_topics, status, submitted_by, verified_by, version) VALUES
-(1, 1, 'CT-1: DFA, NFA & Regular Expressions', NOW() + INTERVAL '3 days', 45, 'Automata equivalence, Pumping Lemma for Regular Languages', 'VERIFIED', 2, 1, 0),
-(2, 2, 'CT-2: 8086 Instruction Set & Addressing Modes', NOW() + INTERVAL '7 days', 45, 'Register indirect, string primitives, memory segmentation', 'UNVERIFIED', 2, NULL, 0),
-(3, 1, 'CT-2: Context-Free Grammars & Pushdown Automata', NOW() + INTERVAL '14 days', 45, 'CFG simplification, Chomsky Normal Form, PDA acceptance', 'VERIFIED', 1, 1, 0)
+INSERT INTO ct_events (id, course_offering_id, title, scheduled_at, duration_minutes, covered_topics, status, submitted_by, verified_by, assigned_teacher_id, version) VALUES
+(1, 1, 'CT-1: DFA, NFA & Regular Expressions', NOW() + INTERVAL '3 days', 45, 'Automata equivalence, Pumping Lemma for Regular Languages', 'VERIFIED', 1, 5, 5, 0),
+(2, 2, 'CT-2: 8086 Instruction Set & Addressing Modes', NOW() + INTERVAL '7 days', 45, 'Register indirect, string primitives, memory segmentation', 'UNVERIFIED', 1, NULL, 5, 0),
+(3, 1, 'CT-2: Context-Free Grammars & Pushdown Automata', NOW() + INTERVAL '14 days', 45, 'CFG simplification, Chomsky Normal Form, PDA acceptance', 'VERIFIED', 1, 5, 5, 0)
 ON CONFLICT (id) DO NOTHING;
 
 SELECT setval('ct_events_id_seq', (SELECT MAX(id) FROM ct_events));
