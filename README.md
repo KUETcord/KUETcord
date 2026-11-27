@@ -123,8 +123,8 @@ KUETcord implements both System-Level Authorities and Discord-Style Contextual R
 | **Campus Commons & Chat** | Member B | Community channels, direct DMs, group DMs (3+ users), cursor pagination, client idempotency deduplication. |
 | **Real-Time Resilience** | Member B | STOMP bidirectional heartbeats (10s/10s), dead-socket eviction (≤ 30s: 3 missed heartbeats), exponential backoff reconnection, gap catch-up sync (`/sync`), multi-tab presence (`/topic/presence`), debounced typing indicators. |
 | **Notification Center** | Member B | Persistent inbox, unread counts, Notify/Mute preferences (**Strategy Pattern**), transactional outbox worker (`SKIP LOCKED`). |
-| **Contest & Challenge Board** | Member C | Hackathons, robotics, coding contests (strictly separated from CT Hub), bookmarking, ranking (**Strategy Pattern**). |
-| **Project Playgrounds** | Member C | Workspaces, team roles, Kanban board (`TODO` $\rightarrow$ `DONE`) with **`@Version` Optimistic Concurrency**, milestones, decision logs. |
+| **Contest & Challenge Board** | Member C | Hackathons, robotics, coding contests (strictly separated from CT Hub), bookmarking, ranking (**Strategy Pattern**). UI: `/opportunities` board (search, category chips, ranking toggle, optimistic bookmarks) and `/opportunities/:id` detail with "Start Project Playground". |
+| **Project Playgrounds** | Member C | Workspaces, team roles, Kanban board (`TODO` $\rightarrow$ `DONE`) with **`@Version` Optimistic Concurrency**, milestones, decision logs. UI: `/playgrounds` and `/playgrounds/:id` with a drag-and-drop `@dnd-kit` board, 409 "Load Latest Changes" banner, milestone timeline and decision-log accordion. |
 | **Study Circles & Pulse** | Member C | Peer study sessions with UTC timestamps, revision resources, Pomodoro timer widget, university notices. |
 
 ---

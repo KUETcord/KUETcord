@@ -7,7 +7,11 @@ import { AuthPage } from './pages/AuthPage';
 import { CtHubPage } from './pages/CtHubPage';
 import { MessagingPage } from './pages/MessagingPage';
 import { ModuleSlotPage } from './pages/ModuleSlotPage';
+import { OpportunitiesPage } from './pages/OpportunitiesPage';
+import { OpportunityDetailPage } from './pages/OpportunityDetailPage';
 import { OverviewPage } from './pages/OverviewPage';
+import { PlaygroundsPage } from './pages/PlaygroundsPage';
+import { PlaygroundWorkspacePage } from './pages/PlaygroundWorkspacePage';
 
 export function AppRoutes() {
   return (
@@ -18,26 +22,10 @@ export function AppRoutes() {
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/verify-email" element={<AuthPage />} />
         <Route path="/messaging" element={<MessagingPage />} />
-        <Route
-          path="/opportunities"
-          element={
-            <ModuleSlotPage
-              title="Contest & Challenge Board"
-              owner="Member C"
-              description="Backend opportunity catalog and Deadline/Recent ranking strategies are merged on develop. Frontend contest board mounts into this AppShell route."
-            />
-          }
-        />
-        <Route
-          path="/playgrounds"
-          element={
-            <ModuleSlotPage
-              title="Project Playgrounds & Kanban"
-              owner="Member C"
-              description="Backend Playgrounds and optimistic-locked Kanban tasks are merged on develop. Frontend <PlaygroundBoard /> mounts into this AppShell route."
-            />
-          }
-        />
+        <Route path="/opportunities" element={<OpportunitiesPage />} />
+        <Route path="/opportunities/:id" element={<OpportunityDetailPage />} />
+        <Route path="/playgrounds" element={<PlaygroundsPage />} />
+        <Route path="/playgrounds/:id" element={<PlaygroundWorkspacePage />} />
         <Route
           path="/study-circles"
           element={
