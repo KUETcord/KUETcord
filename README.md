@@ -125,7 +125,7 @@ KUETcord implements both System-Level Authorities and Discord-Style Contextual R
 | **Notification Center** | Member B | Persistent inbox, unread counts, Notify/Mute preferences (**Strategy Pattern**), transactional outbox worker (`SKIP LOCKED`). |
 | **Contest & Challenge Board** | Member C | Hackathons, robotics, coding contests (strictly separated from CT Hub), bookmarking, ranking (**Strategy Pattern**). UI: `/opportunities` board (search, category chips, ranking toggle, optimistic bookmarks) and `/opportunities/:id` detail with "Start Project Playground". |
 | **Project Playgrounds** | Member C | Workspaces, team roles, Kanban board (`TODO` $\rightarrow$ `DONE`) with **`@Version` Optimistic Concurrency**, milestones, decision logs. UI: `/playgrounds` and `/playgrounds/:id` with a drag-and-drop `@dnd-kit` board, 409 "Load Latest Changes" banner, milestone timeline and decision-log accordion. |
-| **Study Circles & Pulse** | Member C | Peer study sessions with UTC timestamps, revision resources, Pomodoro timer widget, university notices. |
+| **Study Circles & Pulse** | Member C | Peer study sessions with UTC timestamps, shared revision checklist, vetted resources, Pomodoro timer widget, university notices. UI: `/study-circles` hub (upcoming-session calendar cards, join, CT Hub `?courseId=` deep link), `/study-circles/:id` (sessions, checklist, resources, Pomodoro) and the `/campus-pulse` feed (Club / Seminar / Department / Career). |
 
 ---
 
@@ -331,6 +331,8 @@ Endpoint: `/ws` (SockJS) or `/ws/websocket` (native WebSocket). Origins follow `
 - `GET /api/v1/study-circles/{id}/sessions` — Upcoming sessions (including one in progress); `includePast=true` for history. Members only
 - `POST /api/v1/study-circles/{id}/sessions` — Schedule (`title`, `scheduledAt` ISO-8601 in the future, `durationMinutes` 15-480 default 60, `agenda`, `locationOrLink`). Times are UTC; overlapping another session of the circle is `409`. Writes `STUDY_SESSION_SCHEDULED` to the outbox. Members only
 - `GET/POST /api/v1/study-circles/{id}/resources` — Shared links (`title`, http(s) `url`, `category` `NOTES` / `QUESTION_BANK` / `SLIDES` / `RECORDING`), newest first. Members only
+- `GET/POST /api/v1/study-circles/{id}/revision-items` — Shared revision checklist, oldest first (`title` up to 200 characters). Members only
+- `PATCH /api/v1/study-circles/{id}/revision-items/{itemId}` — `{"done": true}` ticks a topic (records `completedBy` / `completedAt`; ticking again keeps the first tick), `false` unticks it. Members only; an item from another circle is `404`
 
 ### Campus Pulse (Member C)
 - `GET /api/v1/announcements` — Feed, newest first. Params: `category` (`SEMINAR`, `CLUB`, `ACADEMIC`, `CAREER`), `organization` (case-insensitive), `page`, `size` (max 50)
