@@ -30,7 +30,7 @@ class CtHubQueryIndexIT {
     private MockMvc mockMvc;
 
     @Test
-    @DisplayName("PostgreSQL schema defines required CT Hub, Teacher Approval, and Outbox indexes")
+    @DisplayName("PostgreSQL schema defines required CT Hub, Year-Term, Teacher Approval, and Outbox indexes")
     void criticalDatabaseIndexesShouldExist() {
         List<String> indexes = jdbcTemplate.queryForList(
                 "SELECT indexname FROM pg_indexes WHERE schemaname = 'public'",
@@ -40,12 +40,13 @@ class CtHubQueryIndexIT {
         assertTrue(indexes.contains("idx_ct_course_schedule"), "Missing idx_ct_course_schedule");
         assertTrue(indexes.contains("idx_ct_assigned_teacher"), "Missing idx_ct_assigned_teacher");
         assertTrue(indexes.contains("idx_courses_dept_sem"), "Missing idx_courses_dept_sem");
+        assertTrue(indexes.contains("idx_courses_dept_year_term"), "Missing idx_courses_dept_year_term");
         assertTrue(indexes.contains("idx_users_display_name_lower"), "Missing idx_users_display_name_lower");
         assertTrue(indexes.contains("idx_outbox_pending"), "Missing idx_outbox_pending");
     }
 
     @Test
-    @DisplayName("PostgreSQL query planner utilizes composite indexes for CT Hub hot read queries")
+    @DisplayName("PostgreSQL query planner utilizes composite indexes for CT Hub & Year-Term hot read queries")
     void postgresPlannerShouldUseCompositeIndexesOnCtQueries() {
         // Force planner to reveal index eligibility even on small CI test tables
         jdbcTemplate.execute("SET LOCAL enable_seqscan = off");
@@ -66,13 +67,22 @@ class CtHubQueryIndexIT {
         assertTrue(teacherApprovalPlan != null && teacherApprovalPlan.contains("idx_ct_assigned_teacher"),
                 "Expected idx_ct_assigned_teacher in EXPLAIN plan, got: " + teacherApprovalPlan);
 
+        String yearTermPlan = jdbcTemplate.queryForObject(
+                "EXPLAIN (FORMAT JSON) SELECT id, course_code FROM course_offerings " +
+                        "WHERE department = 'CSE' AND year_term = '3-1'",
+                String.class
+        );
+        assertTrue(yearTermPlan != null && yearTermPlan.contains("idx_courses_dept_year_term"),
+                "Expected idx_courses_dept_year_term in EXPLAIN plan, got: " + yearTermPlan);
+
         String courseFilterPlan = jdbcTemplate.queryForObject(
                 "EXPLAIN (FORMAT JSON) SELECT id, course_code FROM course_offerings " +
                         "WHERE department = 'CSE' AND semester = '5th'",
                 String.class
         );
-        assertTrue(courseFilterPlan != null && courseFilterPlan.contains("idx_courses_dept_sem"),
-                "Expected idx_courses_dept_sem in EXPLAIN plan, got: " + courseFilterPlan);
+        assertTrue(courseFilterPlan != null &&
+                        (courseFilterPlan.contains("idx_courses_dept_sem") || courseFilterPlan.contains("idx_courses_dept_year_term")),
+                "Expected composite course index in EXPLAIN plan, got: " + courseFilterPlan);
     }
 
     @Test
