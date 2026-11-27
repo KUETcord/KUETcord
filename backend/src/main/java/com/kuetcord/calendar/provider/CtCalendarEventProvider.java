@@ -14,7 +14,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Supplies live CT Hub schedules (including exam room and Year-Term metadata) to the unified Calendar Tab.
+ * Supplies live CT Hub schedules (including multi-room roll-range summary,
+ * combined 2-teacher names, and Year-Term metadata) to the unified Calendar Tab.
  */
 @Component
 @RequiredArgsConstructor
@@ -41,27 +42,33 @@ public class CtCalendarEventProvider implements CalendarEventProvider {
         List<CtEventSummaryDto> events = ctEventService.listEvents(
                 null, null, department, yearTerm, batch, from, to);
         return events.stream()
-                .map(ev -> new CalendarEventDto(
-                        "ct:" + ev.id(),
-                        ev.id(),
-                        CalendarEventType.CT,
-                        ev.title(),
-                        ev.courseOfferingId(),
-                        ev.courseCode(),
-                        ev.courseTitle(),
-                        ev.courseDepartment(),
-                        ev.courseYearTerm(),
-                        ev.targetBatch(),
-                        ev.scheduledAt(),
-                        ev.scheduledAt().plus(ev.durationMinutes(), ChronoUnit.MINUTES),
-                        ev.durationMinutes(),
-                        ev.examRoom(),
-                        ev.status().name(),
-                        ev.assignedTeacherName(),
-                        null,
-                        null,
-                        "/ct-hub"
-                ))
+                .map(ev -> {
+                    String teacherLabel = ev.assignedTeacherName();
+                    if (ev.coTeacherName() != null && !ev.coTeacherName().isBlank()) {
+                        teacherLabel = (teacherLabel != null ? teacherLabel + " & " : "") + ev.coTeacherName();
+                    }
+                    return new CalendarEventDto(
+                            "ct:" + ev.id(),
+                            ev.id(),
+                            CalendarEventType.CT,
+                            ev.title(),
+                            ev.courseOfferingId(),
+                            ev.courseCode(),
+                            ev.courseTitle(),
+                            ev.courseDepartment(),
+                            ev.courseYearTerm(),
+                            ev.targetBatch(),
+                            ev.scheduledAt(),
+                            ev.scheduledAt().plus(ev.durationMinutes(), ChronoUnit.MINUTES),
+                            ev.durationMinutes(),
+                            ev.examRoom(),
+                            ev.status().name(),
+                            teacherLabel,
+                            null,
+                            null,
+                            "/ct-hub"
+                    );
+                })
                 .toList();
     }
 }

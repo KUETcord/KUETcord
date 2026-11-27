@@ -1,5 +1,6 @@
 -- ==============================================================================
--- Flyway Migration V16: My Account, Admin CRUD, Canonical Year-Term & CT Exam Room
+-- Flyway Migration V16: My Account, Admin CRUD, Canonical Year-Term,
+--                       CT Multi-Room Roll Ranges & Combined 2-Teacher Support
 -- Owned by: Member A (Team Lead & Security Architect)
 -- ==============================================================================
 
@@ -52,7 +53,12 @@ ALTER TABLE course_offerings
 CREATE INDEX idx_courses_dept_year_term
     ON course_offerings (department, year_term);
 
--- 3. Extend ct_events with exam_room and target_batch
+-- 3. Extend ct_events with exam_room, multi-room roll_allocations (JSONB), target_batch, and combined co_teacher_id
 ALTER TABLE ct_events
-    ADD COLUMN exam_room VARCHAR(100),
-    ADD COLUMN target_batch VARCHAR(20);
+    ADD COLUMN exam_room VARCHAR(255),
+    ADD COLUMN room_allocations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN target_batch VARCHAR(20),
+    ADD COLUMN co_teacher_id BIGINT REFERENCES users(id);
+
+CREATE INDEX idx_ct_co_teacher
+    ON ct_events (co_teacher_id, status);

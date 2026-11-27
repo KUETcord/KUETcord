@@ -25,7 +25,7 @@ import {
 import { ApiError, ctHubApi } from '../lib/api';
 import { cn, pluralize } from '../lib/format';
 import { resolveYearTerm, YEAR_TERM_OPTIONS } from '../lib/yearTerm';
-import type { CourseOffering, CtEventSummary, CtStatus } from '../types/domain';
+import type { CourseOffering, CtEventSummary, CtStatus, RoomAllocation } from '../types/domain';
 
 const STATUS_OPTIONS: Array<{ value: '' | CtStatus; label: string }> = [
   { value: '', label: 'All statuses' },
@@ -148,7 +148,8 @@ export function CtHubPage() {
           ev.courseCode.toLowerCase().includes(q) ||
           ev.courseTitle.toLowerCase().includes(q) ||
           (ev.examRoom?.toLowerCase().includes(q) ?? false) ||
-          (ev.assignedTeacherName?.toLowerCase().includes(q) ?? false)
+          (ev.assignedTeacherName?.toLowerCase().includes(q) ?? false) ||
+          (ev.coTeacherName?.toLowerCase().includes(q) ?? false)
         );
       }
       return true;
@@ -198,12 +199,27 @@ export function CtHubPage() {
     courseOfferingId: number;
     teacherId: number;
     teacherName: string;
+    coTeacherId?: number;
+    coTeacherName?: string;
     title: string;
     scheduledAt: string;
     durationMinutes: number;
-    examRoom?: string;
+    roomAllocations?: RoomAllocation[];
     coveredTopics?: string;
   }) => {
+    const teacherDisplay = payload.coTeacherName
+      ? `${payload.teacherName} & ${payload.coTeacherName}`
+      : payload.teacherName;
+    const summaryRoom = payload.roomAllocations?.length
+      ? payload.roomAllocations
+          .map((a) =>
+            a.rollStart !== null && a.rollEnd !== null
+              ? `${a.room} (${a.rollStart}-${a.rollEnd})`
+              : a.room,
+          )
+          .join(', ')
+      : null;
+
     if (isDemoMode) {
       const course = courses.find((c) => c.id === payload.courseOfferingId) ?? courses[0];
       const newEvent: CtEventSummary = {
@@ -216,13 +232,16 @@ export function CtHubPage() {
         title: payload.title,
         scheduledAt: payload.scheduledAt,
         durationMinutes: payload.durationMinutes,
-        examRoom: payload.examRoom ?? null,
+        examRoom: summaryRoom,
+        roomAllocations: payload.roomAllocations ?? [],
         coveredTopics: payload.coveredTopics ?? null,
         status: 'UNVERIFIED',
         submittedById: user?.id ?? 2,
         submittedByName: user?.displayName ?? 'Karim Rahman',
         assignedTeacherId: payload.teacherId,
         assignedTeacherName: payload.teacherName,
+        coTeacherId: payload.coTeacherId ?? null,
+        coTeacherName: payload.coTeacherName ?? null,
         verifiedById: null,
         verifiedByName: null,
         version: 0,
@@ -230,21 +249,22 @@ export function CtHubPage() {
         updatedAt: new Date().toISOString(),
       };
       setEvents((prev) => [newEvent, ...prev]);
-      toast.success(`CT proposed and ${payload.teacherName} notified for approval`);
+      toast.success(`CT proposed and ${teacherDisplay} notified for approval`);
       return;
     }
 
     const created = await ctHubApi.createEvent({
       courseOfferingId: payload.courseOfferingId,
       teacherId: payload.teacherId,
+      coTeacherId: payload.coTeacherId,
       title: payload.title,
       scheduledAt: payload.scheduledAt,
       durationMinutes: payload.durationMinutes,
-      examRoom: payload.examRoom,
+      roomAllocations: payload.roomAllocations,
       coveredTopics: payload.coveredTopics,
     });
     setEvents((prev) => [created, ...prev]);
-    toast.success(`CT proposed and ${payload.teacherName} notified for approval`);
+    toast.success(`CT proposed and ${teacherDisplay} notified for approval`);
   };
 
   const handleVerify = async (event: CtEventSummary) => {
@@ -285,24 +305,39 @@ export function CtHubPage() {
 
   const handleReschedule = async (
     event: CtEventSummary,
-    payload: { newScheduledAt: string; reason: string; expectedVersion: number; examRoom?: string },
+    payload: {
+      newScheduledAt: string;
+      reason: string;
+      expectedVersion: number;
+      roomAllocations?: RoomAllocation[];
+    },
   ) => {
     setConflictBanner(null);
     const notifyNote =
       user?.globalRole === 'CR' && event.assignedTeacherName
-        ? ` — ${event.assignedTeacherName} notified`
+        ? ` — ${event.coTeacherName ? `${event.assignedTeacherName} & ${event.coTeacherName}` : event.assignedTeacherName} notified`
         : '';
 
     try {
       if (isDemoMode) {
+        const nextRoomSummary = payload.roomAllocations?.length
+          ? payload.roomAllocations
+              .map((a) =>
+                a.rollStart !== null && a.rollEnd !== null
+                  ? `${a.room} (${a.rollStart}-${a.rollEnd})`
+                  : a.room,
+              )
+              .join(', ')
+          : null;
         setEvents((prev) =>
           prev.map((e) =>
             e.id === event.id
               ? {
                   ...e,
                   scheduledAt: payload.newScheduledAt,
+                  roomAllocations: payload.roomAllocations ?? e.roomAllocations,
                   examRoom:
-                    payload.examRoom !== undefined ? payload.examRoom || null : e.examRoom,
+                    payload.roomAllocations !== undefined ? nextRoomSummary : e.examRoom,
                   status: 'RESCHEDULED',
                   version: e.version + 1,
                 }
@@ -622,6 +657,7 @@ export function CtHubPage() {
                 event={ev}
                 currentUserId={user?.id ?? null}
                 currentUserRole={user?.globalRole ?? null}
+                currentUserRollNumber={user?.rollNumber ?? null}
                 canApprove={canApproveCt}
                 canRescheduleOrCancel={canRescheduleOrCancelCt}
                 verifyingId={verifyingId}

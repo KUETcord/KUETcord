@@ -9,8 +9,8 @@ import java.util.Set;
 /**
  * Member A ↔ Member B Cross-Module Outbox Handler.
  * <p>
- * Translates CT Hub transactional outbox events emitted by {@code CtEventService} into
- * persisted inbox notifications (and post-commit STOMP pushes) via Member B's
+ * Translates CT Hub transactional outbox events (supporting 1 or 2 combined course teachers
+ * and multi-room summaries) into persisted inbox notifications via Member B's
  * {@link OutboxProcessor} {@code SKIP LOCKED} worker.
  */
 @Component
@@ -46,9 +46,13 @@ public class CtHubEventHandler implements OutboxEventHandler {
 
     private List<NotificationDraft> approvalRequested(ClaimedOutboxEvent event) {
         Long ctEventId = event.requireLong("ctEventId");
-        Long teacherId = event.optionalLong("teacherId");
         Long submittedById = event.optionalLong("submittedById");
-        if (teacherId == null || teacherId.equals(submittedById)) {
+
+        Set<Long> teacherRecipients = collectTeacherIds(event);
+        if (submittedById != null) {
+            teacherRecipients.remove(submittedById);
+        }
+        if (teacherRecipients.isEmpty()) {
             return List.of();
         }
 
@@ -64,14 +68,15 @@ public class CtHubEventHandler implements OutboxEventHandler {
                 submittedBy == null || submittedBy.isBlank() ? null : "Proposed by " + submittedBy
         );
 
-        return List.of(new NotificationDraft(
-                teacherId,
-                CT_APPROVAL_REQUESTED,
-                title,
-                preview,
-                TARGET_CT_EVENT,
-                ctEventId
-        ));
+        return teacherRecipients.stream()
+                .map(teacherId -> new NotificationDraft(
+                        teacherId,
+                        CT_APPROVAL_REQUESTED,
+                        title,
+                        preview,
+                        TARGET_CT_EVENT,
+                        ctEventId))
+                .toList();
     }
 
     private List<NotificationDraft> lifecycleUpdate(ClaimedOutboxEvent event, String titlePrefix) {
@@ -80,9 +85,8 @@ public class CtHubEventHandler implements OutboxEventHandler {
 
         Set<Long> recipients = new LinkedHashSet<>(event.optionalLongList("followerUserIds"));
         boolean notifyTeacher = Boolean.TRUE.equals(event.payload().get("notifyTeacher"));
-        Long teacherId = event.optionalLong("teacherId");
-        if (notifyTeacher && teacherId != null) {
-            recipients.add(teacherId);
+        if (notifyTeacher) {
+            recipients.addAll(collectTeacherIds(event));
         }
         if (actorId != null) {
             recipients.remove(actorId);
@@ -109,6 +113,19 @@ public class CtHubEventHandler implements OutboxEventHandler {
                         TARGET_CT_EVENT,
                         ctEventId))
                 .toList();
+    }
+
+    private static Set<Long> collectTeacherIds(ClaimedOutboxEvent event) {
+        Set<Long> ids = new LinkedHashSet<>(event.optionalLongList("teacherIds"));
+        Long primary = event.optionalLong("teacherId");
+        if (primary != null) {
+            ids.add(primary);
+        }
+        Long coTeacher = event.optionalLong("coTeacherId");
+        if (coTeacher != null) {
+            ids.add(coTeacher);
+        }
+        return ids;
     }
 
     private static String safeText(String value, String fallback) {

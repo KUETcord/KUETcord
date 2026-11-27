@@ -14,6 +14,7 @@ import com.kuetcord.cthub.dto.CreateCtEventRequest;
 import com.kuetcord.cthub.dto.CtEventDetailDto;
 import com.kuetcord.cthub.dto.CtEventSummaryDto;
 import com.kuetcord.cthub.dto.RescheduleCtEventRequest;
+import com.kuetcord.cthub.dto.RoomAllocationDto;
 import com.kuetcord.cthub.dto.VerifyCtEventRequest;
 import com.kuetcord.cthub.event.CtStatusChangedDomainEvent;
 import com.kuetcord.cthub.event.CtTeacherNotificationDomainEvent;
@@ -43,7 +44,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Core CT Hub workflow engine enforcing CR-to-Teacher approval RBAC, State Pattern lifecycle transitions,
+ * Core CT Hub workflow engine enforcing CR-to-Teacher approval RBAC (1 or 2 combined teachers),
+ * multi-room roll-range allocations, State Pattern lifecycle transitions,
  * JPA {@code @Version} optimistic concurrency control, SingleFlight read coalescing,
  * and atomic transactional outbox + teacher notifications.
  */
@@ -134,8 +136,17 @@ public class CtEventService {
                 .orElseThrow(() -> new ResourceNotFoundException("Course offering not found: " + request.courseOfferingId()));
         User submitter = requireUser(submitterId);
         User assignedTeacher = requireActiveTeacher(request.teacherId());
+        User coTeacher = null;
+        if (request.coTeacherId() != null) {
+            if (request.coTeacherId().equals(assignedTeacher.getId())) {
+                throw new BadRequestException("Combined second teacher must be different from the primary teacher");
+            }
+            coTeacher = requireActiveTeacher(request.coTeacherId());
+        }
 
-        String examRoom = trimNullable(request.examRoom());
+        List<RoomAllocationDto> sanitizedAllocations = sanitizeRoomAllocations(request.roomAllocations());
+        String summaryRoom = RoomAllocationDto.summarize(sanitizedAllocations);
+        String examRoom = summaryRoom != null ? summaryRoom : trimNullable(request.examRoom());
         String targetBatch = trimNullable(request.targetBatch());
 
         CtEvent event = CtEvent.builder()
@@ -144,23 +155,32 @@ public class CtEventService {
                 .scheduledAt(request.scheduledAt())
                 .durationMinutes(request.durationMinutes() != null ? request.durationMinutes() : 45)
                 .examRoom(examRoom)
+                .roomAllocations(sanitizedAllocations)
                 .targetBatch(targetBatch != null ? targetBatch : course.getTargetBatch())
                 .coveredTopics(request.coveredTopics() != null ? request.coveredTopics().trim() : null)
                 .status(CtStatus.UNVERIFIED)
                 .submittedBy(submitter)
                 .assignedTeacher(assignedTeacher)
+                .coTeacher(coTeacher)
                 .build();
 
         CtEvent saved = ctEventRepository.saveAndFlush(event);
+        String teacherNames = coTeacher != null
+                ? assignedTeacher.getDisplayName() + " & " + coTeacher.getDisplayName()
+                : assignedTeacher.getDisplayName();
+
         ctEventHistoryRepository.save(CtEventHistory.builder()
                 .ctEvent(saved)
                 .previousStatus(null)
                 .newStatus(CtStatus.UNVERIFIED)
                 .previousScheduledAt(null)
                 .newScheduledAt(saved.getScheduledAt())
-                .reason("Proposed by " + submitter.getDisplayName() + " for approval by " + assignedTeacher.getDisplayName())
+                .reason("Proposed by " + submitter.getDisplayName() + " for approval by " + teacherNames)
                 .changedBy(submitter)
                 .build());
+
+        List<User> assignedTeachers = assignedTeachersOf(saved);
+        List<Long> teacherIds = assignedTeachers.stream().map(User::getId).toList();
 
         Map<String, Object> outboxPayload = new LinkedHashMap<>();
         outboxPayload.put("ctEventId", saved.getId());
@@ -177,19 +197,27 @@ public class CtEventService {
         outboxPayload.put("teacherId", assignedTeacher.getId());
         outboxPayload.put("teacherEmail", assignedTeacher.getEmail());
         outboxPayload.put("teacherName", assignedTeacher.getDisplayName());
+        outboxPayload.put("teacherIds", teacherIds);
+        if (coTeacher != null) {
+            outboxPayload.put("coTeacherId", coTeacher.getId());
+            outboxPayload.put("coTeacherEmail", coTeacher.getEmail());
+            outboxPayload.put("coTeacherName", coTeacher.getDisplayName());
+        }
 
         outboxEventPublisher.publish(AGGREGATE_TYPE, String.valueOf(saved.getId()), "CT_APPROVAL_REQUESTED", outboxPayload);
 
-        if (!assignedTeacher.getId().equals(submitter.getId())) {
-            String roomSuffix = saved.getExamRoom() != null ? " in room " + saved.getExamRoom() : "";
-            domainEventPublisher.publishEvent(new CtTeacherNotificationDomainEvent(
-                    saved.getId(),
-                    assignedTeacher.getEmail(),
-                    assignedTeacher.getDisplayName(),
-                    "[KUETcord] CT Approval Requested: " + course.getCourseCode() + " - " + saved.getTitle(),
-                    submitter.getDisplayName() + " proposed \"" + saved.getTitle() + "\" for "
-                            + course.getCourseCode() + " scheduled at " + saved.getScheduledAt() + roomSuffix + "."
-            ));
+        String roomSuffix = saved.getExamRoom() != null ? " in room(s) " + saved.getExamRoom() : "";
+        for (User teacher : assignedTeachers) {
+            if (!teacher.getId().equals(submitter.getId())) {
+                domainEventPublisher.publishEvent(new CtTeacherNotificationDomainEvent(
+                        saved.getId(),
+                        teacher.getEmail(),
+                        teacher.getDisplayName(),
+                        "[KUETcord] CT Approval Requested: " + course.getCourseCode() + " - " + saved.getTitle(),
+                        submitter.getDisplayName() + " proposed \"" + saved.getTitle() + "\" for "
+                                + course.getCourseCode() + " scheduled at " + saved.getScheduledAt() + roomSuffix + "."
+                ));
+            }
         }
 
         return CtEventSummaryDto.from(saved);
@@ -231,7 +259,12 @@ public class CtEventService {
         Instant previousScheduledAt = event.getScheduledAt();
 
         ctStateResolver.resolve(previousStatus).reschedule(event, request.newScheduledAt(), request.reason().trim(), actor);
-        if (request.examRoom() != null) {
+        if (request.roomAllocations() != null) {
+            List<RoomAllocationDto> sanitized = sanitizeRoomAllocations(request.roomAllocations());
+            event.setRoomAllocations(sanitized);
+            String summary = RoomAllocationDto.summarize(sanitized);
+            event.setExamRoom(summary != null ? summary : trimNullable(request.examRoom()));
+        } else if (request.examRoom() != null) {
             event.setExamRoom(trimNullable(request.examRoom()));
         }
         CtEvent saved = ctEventRepository.saveAndFlush(event);
@@ -278,10 +311,11 @@ public class CtEventService {
                 .build());
 
         List<Long> followerIds = courseFollowRepository.findFollowerUserIdsByCourseOfferingId(saved.getCourseOffering().getId());
-        User assignedTeacher = saved.getAssignedTeacher();
-        boolean notifyTeacher = notifyTeacherIfDifferentActor
-                && assignedTeacher != null
-                && !assignedTeacher.getId().equals(actor.getId());
+        List<User> assignedTeachers = assignedTeachersOf(saved);
+        List<User> teachersToNotify = notifyTeacherIfDifferentActor
+                ? assignedTeachers.stream().filter(t -> !t.getId().equals(actor.getId())).toList()
+                : List.of();
+        boolean notifyTeacher = !teachersToNotify.isEmpty();
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("ctEventId", saved.getId());
@@ -299,10 +333,15 @@ public class CtEventService {
         payload.put("actorId", actor.getId());
         payload.put("actorName", actor.getDisplayName());
         payload.put("followerUserIds", followerIds);
-        if (assignedTeacher != null) {
-            payload.put("teacherId", assignedTeacher.getId());
-            payload.put("teacherEmail", assignedTeacher.getEmail());
+        if (saved.getAssignedTeacher() != null) {
+            payload.put("teacherId", saved.getAssignedTeacher().getId());
+            payload.put("teacherEmail", saved.getAssignedTeacher().getEmail());
         }
+        if (saved.getCoTeacher() != null) {
+            payload.put("coTeacherId", saved.getCoTeacher().getId());
+            payload.put("coTeacherEmail", saved.getCoTeacher().getEmail());
+        }
+        payload.put("teacherIds", assignedTeachers.stream().map(User::getId).toList());
         payload.put("notifyTeacher", notifyTeacher);
 
         outboxEventPublisher.publish(AGGREGATE_TYPE, String.valueOf(saved.getId()), outboxEventType, payload);
@@ -321,15 +360,50 @@ public class CtEventService {
 
         if (notifyTeacher) {
             String actionLabel = "CT_CANCELLED".equals(outboxEventType) ? "cancelled" : "rescheduled";
-            domainEventPublisher.publishEvent(new CtTeacherNotificationDomainEvent(
-                    saved.getId(),
-                    assignedTeacher.getEmail(),
-                    assignedTeacher.getDisplayName(),
-                    "[KUETcord] CT " + actionLabel + ": " + saved.getCourseOffering().getCourseCode() + " - " + saved.getTitle(),
-                    actor.getDisplayName() + " " + actionLabel + " \"" + saved.getTitle()
-                            + "\" (" + saved.getCourseOffering().getCourseCode() + "). Reason: " + reason
-            ));
+            for (User teacher : teachersToNotify) {
+                domainEventPublisher.publishEvent(new CtTeacherNotificationDomainEvent(
+                        saved.getId(),
+                        teacher.getEmail(),
+                        teacher.getDisplayName(),
+                        "[KUETcord] CT " + actionLabel + ": " + saved.getCourseOffering().getCourseCode() + " - " + saved.getTitle(),
+                        actor.getDisplayName() + " " + actionLabel + " \"" + saved.getTitle()
+                                + "\" (" + saved.getCourseOffering().getCourseCode() + "). Reason: " + reason
+                ));
+            }
         }
+    }
+
+    private List<RoomAllocationDto> sanitizeRoomAllocations(List<RoomAllocationDto> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<RoomAllocationDto> sanitized = new ArrayList<>();
+        for (RoomAllocationDto entry : raw) {
+            if (entry == null || entry.room() == null || entry.room().isBlank()) {
+                continue;
+            }
+            Integer start = entry.rollStart();
+            Integer end = entry.rollEnd();
+            if (start != null && end != null && start > end) {
+                throw new BadRequestException(
+                        "Invalid roll range for room " + entry.room().trim() + ": rollStart (" + start + ") must be <= rollEnd (" + end + ")");
+            }
+            sanitized.add(new RoomAllocationDto(start, end, entry.room().trim()));
+        }
+        return sanitized;
+    }
+
+    private List<User> assignedTeachersOf(CtEvent event) {
+        List<User> list = new ArrayList<>(2);
+        if (event.getAssignedTeacher() != null) {
+            list.add(event.getAssignedTeacher());
+        }
+        if (event.getCoTeacher() != null
+                && (event.getAssignedTeacher() == null
+                || !event.getCoTeacher().getId().equals(event.getAssignedTeacher().getId()))) {
+            list.add(event.getCoTeacher());
+        }
+        return list;
     }
 
     private void assertAssignedTeacherOrAdmin(CtEvent event, User actor, boolean allowCr) {
@@ -341,10 +415,14 @@ public class CtEventService {
             return;
         }
         if (hasRole(actor, RoleName.ROLE_TEACHER)) {
-            if (event.getAssignedTeacher() != null && event.getAssignedTeacher().getId().equals(actor.getId())) {
+            boolean isPrimary = event.getAssignedTeacher() != null
+                    && event.getAssignedTeacher().getId().equals(actor.getId());
+            boolean isCombined = event.getCoTeacher() != null
+                    && event.getCoTeacher().getId().equals(actor.getId());
+            if (isPrimary || isCombined) {
                 return;
             }
-            throw new ForbiddenException("Only the assigned course teacher can perform this action");
+            throw new ForbiddenException("Only an assigned course teacher can perform this action");
         }
         throw new ForbiddenException("Insufficient permissions for this CT Hub action");
     }

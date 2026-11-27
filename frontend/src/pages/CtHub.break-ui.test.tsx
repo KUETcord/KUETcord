@@ -53,7 +53,7 @@ describe('CT Hub UI, Teacher Approval RBAC & Adversarial break-ui Stress Tests',
     fireEvent.click(screen.getByRole('button', { name: /Propose CT/i }));
     const searchInput = screen.getByPlaceholderText(/Search teacher by name or email/i);
     fireEvent.change(searchInput, { target: { value: 'Farhana' } });
-    expect(screen.getByText(/Dr\. Farhana Yasmin/i)).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Dr\. Farhana Yasmin/i })).toBeInTheDocument();
     expect(screen.queryByText(/Prof\. Dr\. Rafiqul Islam/i)).not.toBeInTheDocument();
 
     // Close modal

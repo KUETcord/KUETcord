@@ -8,6 +8,7 @@ import type {
   CtEventSummary,
   CtStatus,
   RoleName,
+  RoomAllocation,
   TeacherSummary,
   UserStatus,
   UserSummary,
@@ -224,11 +225,13 @@ export const ctHubApi = {
   createEvent(payload: {
     courseOfferingId: number;
     teacherId: number;
+    coTeacherId?: number;
     title: string;
     scheduledAt: string;
     durationMinutes: number;
     coveredTopics?: string;
     examRoom?: string;
+    roomAllocations?: RoomAllocation[];
     targetBatch?: string;
   }): Promise<CtEventSummary> {
     return request<CtEventSummary>('/ct/events', {
@@ -246,7 +249,13 @@ export const ctHubApi = {
 
   rescheduleEvent(
     eventId: number,
-    payload: { newScheduledAt: string; reason: string; expectedVersion: number; examRoom?: string },
+    payload: {
+      newScheduledAt: string;
+      reason: string;
+      expectedVersion: number;
+      examRoom?: string;
+      roomAllocations?: RoomAllocation[];
+    },
   ): Promise<CtEventSummary> {
     return request<CtEventSummary>(`/ct/events/${eventId}/reschedule`, {
       method: 'POST',

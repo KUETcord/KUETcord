@@ -61,6 +61,12 @@ export interface CourseFollowStatus {
   followerCount: number;
 }
 
+export interface RoomAllocation {
+  rollStart: number | null;
+  rollEnd: number | null;
+  room: string;
+}
+
 export interface CtEventSummary {
   id: number;
   courseOfferingId: number;
@@ -72,6 +78,7 @@ export interface CtEventSummary {
   scheduledAt: string;
   durationMinutes: number;
   examRoom?: string | null;
+  roomAllocations?: RoomAllocation[];
   targetBatch?: string | null;
   coveredTopics: string | null;
   status: CtStatus;
@@ -79,6 +86,8 @@ export interface CtEventSummary {
   submittedByName: string;
   assignedTeacherId: number | null;
   assignedTeacherName: string | null;
+  coTeacherId?: number | null;
+  coTeacherName?: string | null;
   verifiedById: number | null;
   verifiedByName: string | null;
   version: number;

@@ -15,13 +15,37 @@ import {
   XCircle,
 } from 'lucide-react';
 import { cn, formatExactDateTime, formatSmartTimestamp, getInitials } from '../../lib/format';
-import type { CtEventSummary, GlobalRole } from '../../types/domain';
+import type { CtEventSummary, GlobalRole, RoomAllocation } from '../../types/domain';
 import { CtStatusBadge } from './CtStatusBadge';
+
+/**
+ * Extracts a student's numeric class roll (e.g. "2207053" -> 53, or "53" -> 53)
+ * to highlight which roll-range room applies to the signed-in student.
+ */
+function parseClassRoll(rollNumber?: string | null): number | null {
+  if (!rollNumber) return null;
+  const digits = rollNumber.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length >= 6) {
+    const tail = Number.parseInt(digits.slice(-3), 10);
+    return Number.isFinite(tail) && tail > 0 ? tail : null;
+  }
+  const parsed = Number.parseInt(digits, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function matchesStudentRoll(allocation: RoomAllocation, studentRoll: number | null): boolean {
+  if (studentRoll === null) return false;
+  if (allocation.rollStart !== null && studentRoll < allocation.rollStart) return false;
+  if (allocation.rollEnd !== null && studentRoll > allocation.rollEnd) return false;
+  return allocation.rollStart !== null || allocation.rollEnd !== null;
+}
 
 interface CtEventCardProps {
   event: CtEventSummary;
   currentUserId: number | null;
   currentUserRole: GlobalRole | null;
+  currentUserRollNumber?: string | null;
   canApprove: boolean;
   canRescheduleOrCancel: boolean;
   verifyingId: number | null;
@@ -34,6 +58,7 @@ export function CtEventCard({
   event,
   currentUserId,
   currentUserRole,
+  currentUserRollNumber,
   canApprove,
   canRescheduleOrCancel,
   verifyingId,
@@ -48,7 +73,7 @@ export function CtEventCard({
   const isAssignedTeacher =
     currentUserRole === 'TEACHER' &&
     currentUserId !== null &&
-    event.assignedTeacherId === currentUserId;
+    (event.assignedTeacherId === currentUserId || event.coTeacherId === currentUserId);
 
   const canApproveThisEvent =
     canApprove &&
@@ -61,6 +86,12 @@ export function CtEventCard({
     (isElevated || currentUserRole === 'CR' || isAssignedTeacher);
 
   const isVerifying = verifyingId === event.id;
+  const studentClassRoll = parseClassRoll(currentUserRollNumber);
+  const allocations = event.roomAllocations ?? [];
+
+  const combinedTeacherLabel = event.coTeacherName
+    ? `${event.assignedTeacherName ?? ''} & ${event.coTeacherName}`
+    : event.assignedTeacherName;
 
   return (
     <article
@@ -108,25 +139,71 @@ export function CtEventCard({
               <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{event.durationMinutes} min</span>
             </span>
-            {event.examRoom && (
-              <span
-                className="inline-flex min-w-0 items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-amber-200"
-                title={`Exam room: ${event.examRoom}`}
-              >
-                <MapPin className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden="true" />
-                <span className="truncate max-w-[24ch]">{event.examRoom}</span>
-              </span>
-            )}
-            {event.assignedTeacherName && (
+            {combinedTeacherLabel && (
               <span
                 className="inline-flex min-w-0 items-center gap-1.5 text-sky-300/90"
-                title={`Assigned teacher: ${event.assignedTeacherName}`}
+                title={`Assigned teacher(s): ${combinedTeacherLabel}`}
               >
                 <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                <span className="truncate max-w-[26ch]">{event.assignedTeacherName}</span>
+                <span className="truncate max-w-[40ch]">{combinedTeacherLabel}</span>
               </span>
             )}
           </div>
+
+          {/* Multi-Room Roll-Range Allocations (or Single Exam Room Fallback) */}
+          {allocations.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1" aria-label="Exam room allocations">
+              {allocations.map((alloc, idx) => {
+                const isMyRoom = matchesStudentRoll(alloc, studentClassRoll);
+                const rangeLabel =
+                  alloc.rollStart !== null && alloc.rollEnd !== null
+                    ? `Roll ${alloc.rollStart}–${alloc.rollEnd}`
+                    : alloc.rollStart !== null
+                      ? `Roll ${alloc.rollStart}+`
+                      : null;
+
+                return (
+                  <span
+                    key={`${alloc.room}-${idx}`}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] tabular-nums',
+                      isMyRoom
+                        ? 'border-emerald-500/50 bg-emerald-500/15 font-semibold text-emerald-200'
+                        : 'border-amber-500/25 bg-amber-500/10 text-amber-200',
+                    )}
+                    title={isMyRoom ? `Your assigned room: ${alloc.room}` : undefined}
+                  >
+                    <MapPin
+                      className={cn(
+                        'h-3 w-3 shrink-0',
+                        isMyRoom ? 'text-emerald-300' : 'text-amber-300',
+                      )}
+                      aria-hidden="true"
+                    />
+                    {rangeLabel && <span className="opacity-85">{rangeLabel}:</span>}
+                    <span className="font-mono font-semibold">{alloc.room}</span>
+                    {isMyRoom && (
+                      <span className="ml-0.5 rounded bg-emerald-500/25 px-1 text-[10px] text-emerald-200">
+                        Your Room
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          ) : (
+            event.examRoom && (
+              <div className="pt-1">
+                <span
+                  className="inline-flex min-w-0 items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-200"
+                  title={`Exam room: ${event.examRoom}`}
+                >
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden="true" />
+                  <span className="truncate max-w-[36ch]">{event.examRoom}</span>
+                </span>
+              </div>
+            )
+          )}
         </div>
 
         {(canApproveThisEvent || canMutateThisEvent) && (

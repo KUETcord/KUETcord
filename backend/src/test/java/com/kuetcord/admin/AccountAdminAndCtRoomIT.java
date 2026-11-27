@@ -17,7 +17,9 @@ import com.kuetcord.auth.service.JwtTokenService;
 import com.kuetcord.auth.service.PasswordService;
 import com.kuetcord.cthub.dto.CreateCourseOfferingRequest;
 import com.kuetcord.cthub.dto.CreateCtEventRequest;
+import com.kuetcord.cthub.dto.RoomAllocationDto;
 import com.kuetcord.cthub.dto.UpdateCourseOfferingRequest;
+import com.kuetcord.cthub.dto.VerifyCtEventRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -204,29 +206,51 @@ class AccountAdminAndCtRoomIT {
                 .andExpect(jsonPath("$.data.yearTerm").value("4-2"))
                 .andExpect(jsonPath("$.data.courseTitle").value("Compiler Design & Optimization"));
 
-        // CR proposes a CT with examRoom = "CSE-302" -> filtered by yearTerm=4-2
+        // Provision a second combined Teacher
+        User coTeacher = createVerifiedUser("co." + suffix + "@cse.kuet.ac.bd", "Dr. CoTeacher " + suffix, "Pass1234!", Set.of(RoleName.ROLE_TEACHER));
+        String coTeacherJwt = jwtTokenService.generateToken(coTeacher);
+
+        // CR proposes a CT with 3 variable roll-range rooms & 2 combined teachers -> coTeacher can approve!
         CreateCtEventRequest ctReq = new CreateCtEventRequest(
                 courseId,
                 teacherId,
+                coTeacher.getId(),
                 "CT-1: Lexical Analysis",
                 Instant.now().plus(4, ChronoUnit.DAYS),
                 45,
                 "DFA scanner generation",
-                "CSE-302",
-                "2k20"
+                null,
+                "2k20",
+                java.util.List.of(
+                        new RoomAllocationDto(1, 40, "CSE-101"),
+                        new RoomAllocationDto(41, 80, "CSE-105"),
+                        new RoomAllocationDto(81, 121, "CSE-102")
+                )
         );
-        mockMvc.perform(post("/api/v1/ct/events")
+        MvcResult ctRes = mockMvc.perform(post("/api/v1/ct/events")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + crJwt)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(ctReq)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.examRoom").value("CSE-302"))
-                .andExpect(jsonPath("$.data.courseYearTerm").value("4-2"));
+                .andExpect(jsonPath("$.data.examRoom").value("CSE-101 (1-40), CSE-105 (41-80), CSE-102 (81-121)"))
+                .andExpect(jsonPath("$.data.roomAllocations.length()").value(3))
+                .andExpect(jsonPath("$.data.coTeacherId").value(coTeacher.getId()))
+                .andExpect(jsonPath("$.data.courseYearTerm").value("4-2"))
+                .andReturn();
+        long ctId = objectMapper.readTree(ctRes.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // Second combined teacher approves the CT
+        mockMvc.perform(post("/api/v1/ct/events/" + ctId + "/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + coTeacherJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new VerifyCtEventRequest(0L, "Approved by co-teacher"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("VERIFIED"));
 
         mockMvc.perform(get("/api/v1/ct/events?department=CSE&yearTerm=4-2")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + crJwt))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[?(@.examRoom == 'CSE-302')]").isNotEmpty());
+                .andExpect(jsonPath("$.data[?(@.coTeacherId == " + coTeacher.getId() + ")]").isNotEmpty());
 
         // Delete an unused course offering cleanly
         MvcResult tempCourseRes = mockMvc.perform(post("/api/v1/admin/courses")

@@ -1,5 +1,6 @@
 package com.kuetcord.cthub.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -7,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
+import java.util.List;
 
 public record CreateCtEventRequest(
         @NotNull(message = "Course offering ID is required")
@@ -14,6 +16,8 @@ public record CreateCtEventRequest(
 
         @NotNull(message = "Assigned teacher ID is required")
         Long teacherId,
+
+        Long coTeacherId,
 
         @NotBlank(message = "Title is required")
         @Size(min = 3, max = 150, message = "Title must be between 3 and 150 characters")
@@ -29,13 +33,16 @@ public record CreateCtEventRequest(
         @Size(max = 4000, message = "Covered topics must not exceed 4000 characters")
         String coveredTopics,
 
-        @Size(max = 100, message = "Exam room must not exceed 100 characters")
+        @Size(max = 255, message = "Exam room must not exceed 255 characters")
         String examRoom,
 
         @Size(max = 20, message = "Target batch must not exceed 20 characters")
-        String targetBatch
+        String targetBatch,
+
+        @Size(max = 20, message = "At most 20 room allocations are allowed per CT")
+        List<@Valid RoomAllocationDto> roomAllocations
 ) {
-    /** Backward-compatible constructor for existing test suites. */
+    /** Backward-compatible 6-arg constructor for existing test suites. */
     public CreateCtEventRequest(
             Long courseOfferingId,
             Long teacherId,
@@ -43,6 +50,19 @@ public record CreateCtEventRequest(
             Instant scheduledAt,
             Integer durationMinutes,
             String coveredTopics) {
-        this(courseOfferingId, teacherId, title, scheduledAt, durationMinutes, coveredTopics, null, null);
+        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, null, null, null);
+    }
+
+    /** Backward-compatible 8-arg constructor. */
+    public CreateCtEventRequest(
+            Long courseOfferingId,
+            Long teacherId,
+            String title,
+            Instant scheduledAt,
+            Integer durationMinutes,
+            String coveredTopics,
+            String examRoom,
+            String targetBatch) {
+        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, examRoom, targetBatch, null);
     }
 }

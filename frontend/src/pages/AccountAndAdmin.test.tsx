@@ -18,12 +18,17 @@ describe('Phase 7: My Account, Admin Governance CRUD, Year–Term Default Filter
   it('activates My Batch (3-2 · CSE) by default on CT Hub, renders examRoom, and reveals other terms when toggling All Terms', () => {
     renderAt('/ct-hub?data=demo');
 
-    // Default user is CR (3-2 · CSE) -> My Batch is active by default, hiding EEE 3110 (3-1)
+    // Default user is CR (3-2 · CSE, roll 2007001) -> My Batch is active by default, hiding EEE 3110 (3-1)
     expect(screen.getByRole('button', { name: /My Batch \(3-2 · CSE\)/i })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
-    expect(screen.getAllByText(/CSE-302/i).length).toBeGreaterThan(0);
+    // Multi-room roll ranges & combined 2 teachers render on CT card, highlighting student's room (Roll 1-40: CSE-101)
+    expect(screen.getByText(/CSE-101/i)).toBeInTheDocument();
+    expect(screen.getByText(/CSE-105/i)).toBeInTheDocument();
+    expect(screen.getByText(/CSE-102/i)).toBeInTheDocument();
+    expect(screen.getByText(/Your Room/i)).toBeInTheDocument();
+    expect(screen.getByText(/Prof\. Dr\. Hasan Mahmud & Dr\. Farhana Yasmin/i)).toBeInTheDocument();
     expect(screen.queryByText(/Discrete-Time Fourier Transform/i)).not.toBeInTheDocument();
 
     // Clicking "All Terms" reveals EEE 3110 (3-1) as well
