@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
+  BookOpen,
   CalendarClock,
   Check,
   ChevronDown,
@@ -180,21 +182,32 @@ export function CtEventCard({
             )}
           </div>
 
-          {event.coveredTopics && (
-            <button
-              type="button"
-              onClick={() => setTopicsOpen((prev) => !prev)}
-              className="inline-flex items-center gap-1 text-xs font-medium text-slate-300 transition-colors duration-150 ease-out hover:text-white shrink-0"
-              aria-expanded={topicsOpen}
+          <div className="flex items-center gap-3 shrink-0">
+            <Link
+              to={`/study-circles?courseId=${event.courseOfferingId}&courseCode=${encodeURIComponent(event.courseCode)}`}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-800 bg-slate-950/60 px-2 py-1 text-xs font-medium text-sky-300 transition-[color,border-color,transform] duration-100 ease-out hover:border-sky-500/50 hover:text-sky-200 active:scale-[0.97]"
+              title={`Open Study Circles for ${event.courseCode}`}
             >
-              <span>{topicsOpen ? 'Hide syllabus' : 'View syllabus'}</span>
-              {topicsOpen ? (
-                <ChevronUp className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              )}
-            </button>
-          )}
+              <BookOpen className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>Study Circles</span>
+            </Link>
+
+            {event.coveredTopics && (
+              <button
+                type="button"
+                onClick={() => setTopicsOpen((prev) => !prev)}
+                className="inline-flex items-center gap-1 text-xs font-medium text-slate-300 transition-colors duration-150 ease-out hover:text-white shrink-0"
+                aria-expanded={topicsOpen}
+              >
+                <span>{topicsOpen ? 'Hide syllabus' : 'View syllabus'}</span>
+                {topicsOpen ? (
+                  <ChevronUp className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {topicsOpen && event.coveredTopics && (

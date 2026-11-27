@@ -184,14 +184,14 @@ class OutboxSkipLockedIntegrationTest {
     }
 
     @Test
-    @DisplayName("Event types without a handler (e.g. CT Hub e-mail events) are never claimed")
+    @DisplayName("Event types without a registered handler are never claimed")
     void foreignEventTypesAreLeftForTheirOwnConsumer() {
-        long foreign = insert("CT_APPROVAL_REQUESTED", "{\"teacherId\":1}");
+        long foreign = insert("UNKNOWN_EXTERNAL_EVENT", "{\"refId\":1}");
 
         processor.drainAll();
 
         assertEquals("PENDING", statusOf(foreign));
-        assertFalse(processor.handledEventTypes().contains("CT_APPROVAL_REQUESTED"));
+        assertFalse(processor.handledEventTypes().contains("UNKNOWN_EXTERNAL_EVENT"));
     }
 
     // ----------------------------------------------------------------- helpers
