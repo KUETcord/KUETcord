@@ -1,0 +1,120 @@
+name: Kanban Load Test (k6)
+
+# Member C, Week 5: runs tests/load/k6_kanban_tasks.js (40 VUs) against a real backend + PostgreSQL 16.
+# Runs on demand, and on pull requests that change the script or this workflow, so its numbers are
+# reproducible from the Actions tab instead of from one laptop.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'tests/load/k6_kanban_tasks.js'
+      - '.github/workflows/load-kanban.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  k6-kanban:
+    name: k6 Kanban board (40 VUs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: kuetcord_db
+          POSTGRES_USER: kuetcord_admin
+          POSTGRES_PASSWORD: kuetcord_secure_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/kuetcord_db
+      SPRING_DATASOURCE_USERNAME: kuetcord_admin
+      SPRING_DATASOURCE_PASSWORD: kuetcord_secure_pass
+      PGPASSWORD: kuetcord_secure_pass
+      LOAD_EMAIL: k6.loadtest@stud.kuet.ac.bd
+      LOAD_PASSWORD: LoadTest-2026!
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+          cache-dependency-path: backend/pom.xml
+
+      - name: Package backend
+        working-directory: backend
+        run: mvn -B -q -DskipTests package
+
+      - name: Start backend and wait for health
+        working-directory: backend
+        run: |
+          nohup java -Xmx1g -jar target/kuetcord-backend-*.jar > "$RUNNER_TEMP/backend.log" 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8080/actuator/health > /dev/null; then echo "backend up after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          echo "backend did not become healthy"; tail -n 100 "$RUNNER_TEMP/backend.log"; exit 1
+
+      - name: Create a verified load-test account
+        run: |
+          curl -sf -X POST http://localhost:8080/api/v1/auth/register \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$LOAD_EMAIL\",\"password\":\"$LOAD_PASSWORD\",\"displayName\":\"k6 Load Tester\",\"department\":\"CSE\",\"batch\":\"2k22\"}" > /dev/null
+          # No inbox in CI: mark the address verified directly, as the verification link would.
+          psql -h localhost -U kuetcord_admin -d kuetcord_db -v ON_ERROR_STOP=1 \
+            -c "UPDATE users SET email_verified_at = NOW() WHERE email = '$LOAD_EMAIL'"
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 Kanban load test
+        run: |
+          k6 run --summary-export "$RUNNER_TEMP/k6-summary.json" \
+            -e BASE_URL=http://localhost:8080/api/v1 \
+            -e TEST_EMAIL="$LOAD_EMAIL" -e TEST_PASSWORD="$LOAD_PASSWORD" \
+            tests/load/k6_kanban_tasks.js
+
+      - name: Publish results to the job summary
+        if: always()
+        run: |
+          f="$RUNNER_TEMP/k6-summary.json"
+          [ -f "$f" ] || { echo "No k6 summary was produced." >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          jq -r '
+            def ms: . * 100 | round / 100 | tostring + " ms";
+            "### k6 Kanban load test (40 VUs)",
+            "",
+            "| Metric | Value |",
+            "|---|---|",
+            "| Board read p95 | \(.metrics["http_req_duration{op:board}"]["p(95)"] | ms) |",
+            "| Board read median | \(.metrics["http_req_duration{op:board}"].med | ms) |",
+            "| Card move p95 | \(.metrics["http_req_duration{op:move}"]["p(95)"] | ms) |",
+            "| All requests p95 | \(.metrics.http_req_duration["p(95)"] | ms) |",
+            "| Requests | \(.metrics.http_reqs.count) (\(.metrics.http_reqs.rate * 10 | round / 10)/s) |",
+            "| Failed request rate | \(.metrics.http_req_failed.value * 100 | . * 100 | round / 100)% |",
+            "| Clean 409 conflicts | \(.metrics.kanban_conflicts.count // 0) |",
+            "| 5xx responses | \(.metrics.kanban_server_errors.count // 0) |",
+            "| Checks passed | \(.metrics.checks.value * 100 | . * 100 | round / 100)% |"
+          ' "$f" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload k6 summary and backend log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-kanban-results
+          path: |
+            ${{ runner.temp }}/k6-summary.json
+            ${{ runner.temp }}/backend.log
+          if-no-files-found: ignore
