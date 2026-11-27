@@ -101,7 +101,8 @@ KUETcord implements both System-Level Authorities and Discord-Style Contextual R
 
 1. **System-Level Roles (Spring Security Authorities):**
    - `ROLE_STUDENT`: Default verified `@stud.kuet.ac.bd` student.
-   - `ROLE_CR` (Class Representative): Authorized to verify, cancel, and reschedule CT events.
+   - `ROLE_CR` (Class Representative): Authorized to propose CT events (searching assigned teachers) and reschedule/cancel with automatic teacher alerts.
+   - `ROLE_TEACHER`: Verified KUET faculty (`@kuet.ac.bd` / `@<dept>.kuet.ac.bd`) authorized to approve, reschedule, or cancel assigned CT events.
    - `ROLE_MODERATOR`: Platform-wide content moderation and dispute handling.
    - `ROLE_ADMIN`: Superadmin authority over all university data and user status.
 2. **Discord-Style Community/Server RBAC:**

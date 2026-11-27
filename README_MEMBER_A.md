@@ -53,6 +53,8 @@ flowchart LR
 | **Phase 3 (Week 3)** | Nov 21, 2026 | CT Hub backend (`CourseOffering`, `CourseFollow`, `CtEvent`, `CtEventHistory`), State Pattern (`CtState`), `@Version` optimistic locking, SingleFlight `RequestCoalescer`, atomic `outbox_events`, unit/security/concurrency tests | PR #6 |
 | **Phase 4 (Week 4)** | Nov 24, 2026 | Authenticated `<AppShell />`, sidebar nav & breadcrumbs, Institutional Auth Portal (`/auth`), CT Hub course browser, follow toggles, timeline cards, Radix modals (`scale(0.95)`), HTTP 409 conflict banner, Sonner toasts & `break-ui` stress tests | PR #9 |
 | **Phase 5 (Observability)** | Nov 16, 2026 | Prometheus HTTP latency histograms, scraper config (`monitoring/prometheus/`), auto-provisioned Grafana datasource & dashboard (`monitoring/grafana/`) | PR #3 |
+| **Phase 4.5 (Teacher Approval)** | Nov 24, 2026 | `ROLE_TEACHER` (`V10`), KUET faculty email domains (`@kuet.ac.bd`, `@<dept>.kuet.ac.bd`), searchable teacher combobox, CR-to-Teacher proposal & approval workflow, automatic teacher notifications | PR #10 |
+| **Phase 5 (Docker, k6 & CD)** | Nov 25, 2026 | Fail-fast multi-stage `backend/Dockerfile` (Render 512MB JVM flags) & `frontend/Dockerfile` + `frontend/nginx.conf` (`/api/`, `/ws`, SPA `$uri`), real Docker builds in `ci.yml`, hardened `deploy.yml` smoke checks, authenticated `k6_ct_read.js` (50 VUs, p95 < 150ms), `CtHubQueryIndexIT` (`EXPLAIN` index proof) & `test_fixtures.sql` teacher seed | PR #13 |
 | **Phase 6 (Week 6)** | Dec 06 – Dec 12, 2026 | Cross-module integration, seed data script, demo rehearsal, viva prep | Planned |
 
 ---
@@ -81,9 +83,9 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 | **Unit Testing** | `CtStatePatternTest` & `RequestCoalescerUnitTest` | `CtState` transitions & SingleFlight `RequestCoalescer` | PASS | Verifies legal/illegal CT transitions (terminal `CANCELLED`) and 12-thread single-query coalescing |
 | **Security / RBAC & Concurrency** | `CtHubControllerSecurityTest` | `/api/v1/ct/courses/**` & `/api/v1/ct/events/**` | PASS | `ROLE_STUDENT` blocked with HTTP 403; `ROLE_CR` allowed; stale `@Version` returns HTTP 409 |
 | **Integration (DB/Outbox)** | `CtHubConcurrencyAndOutboxIT` | PostgreSQL 16 + Flyway + `CtEventService` + `outbox_events` | PASS | Verified in CI (Run `44892579267`): `@Version` 409 conflict, terminal cancel, history audit trail, and atomic `CT_VERIFIED`/`CT_RESCHEDULED`/`CT_CANCELLED` outbox rows |
-| **Performance & Load** | `k6_ct_read.js` | `GET /api/v1/ct/events` (50 VUs) | PLANNED | Phase 5 target: p95 <= 150ms under 50 VUs |
+| **Performance & Load** | `k6_ct_read.js` & `CtHubQueryIndexIT` | `GET /api/v1/ct/events` & `/ct/courses` (50 VUs) + PostgreSQL `EXPLAIN` | PASS | Enforces p95 < 150ms, <1% error rate, authenticated `setup()`, and verifies `idx_ct_course_schedule`, `idx_ct_assigned_teacher`, `idx_courses_dept_sem` in CI |
 | **Adversarial UI (`break-ui`)** | `App.test.tsx`, `format.test.ts`, `CtHub.break-ui.test.tsx`, `AuthPage.test.tsx` | `<AppShell />`, `<CtHubPage />`, `<AuthPage />` | PASS | Verifies 80+ char course titles, long Unicode names, 1-word names, singular pluralization, empty states, CR vs Student RBAC, and `@stud.kuet.ac.bd` client gate |
-| **CI/CD Smoke Testing** | `deploy.yml` Actuator Health | `GET /actuator/health` | PLANNED | Phase 5 target: Returns `{"status":"UP"}` with PostgreSQL UP |
+| **Docker & CI/CD Smoke Testing** | `ProductionDockerAndCdConfigUnitTest` & `CtHubQueryIndexIT` | `backend/Dockerfile`, `frontend/Dockerfile`, `frontend/nginx.conf`, `deploy.yml`, `/actuator/health`, `/actuator/prometheus` | PASS | Verifies Render 512MB JVM flags, fail-fast builds, Nginx `/api/` + `/ws` proxy, real Docker image builds in CI, and Actuator `200 UP` + Prometheus metrics |
 
 ---
 
