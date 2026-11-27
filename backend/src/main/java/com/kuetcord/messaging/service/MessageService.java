@@ -3,6 +3,7 @@ package com.kuetcord.messaging.service;
 import com.kuetcord.auth.model.User;
 import com.kuetcord.auth.repository.UserRepository;
 import com.kuetcord.common.exception.BadRequestException;
+import com.kuetcord.common.outbox.OutboxEventPublisher;
 import com.kuetcord.messaging.access.ConversationAccessPolicy;
 import com.kuetcord.messaging.dto.ChatMessageDto;
 import com.kuetcord.messaging.dto.MessagePageDto;
@@ -23,6 +24,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,6 +43,10 @@ public class MessageService {
     public static final int MAX_PAGE_SIZE = 100;
     public static final int DEFAULT_SYNC_SIZE = 50;
     public static final int MAX_SYNC_SIZE = 200;
+    /** Outbox contract consumed by the notification worker ({@code MessageCreatedHandler}). */
+    public static final String MESSAGE_AGGREGATE = "MESSAGE";
+    public static final String MESSAGE_CREATED = "MESSAGE_CREATED";
+    public static final int NOTIFICATION_PREVIEW_LENGTH = 140;
 
     private final MessageRepository messageRepository;
     private final MessageMentionRepository mentionRepository;
@@ -48,6 +54,7 @@ public class MessageService {
     private final ConversationReadStateRepository readStateRepository;
     private final ConversationAccessPolicy accessPolicy;
     private final UserRepository userRepository;
+    private final OutboxEventPublisher outboxEventPublisher;
 
     /** {@code created == false} means this was a retry of an already-persisted message. */
     public record SendResult(ChatMessageDto message, boolean created) {
@@ -74,8 +81,9 @@ public class MessageService {
                 .orElseThrow(() -> new IllegalStateException("Message vanished after idempotent insert"));
 
         if (created) {
-            saveMentions(message, conversationId, senderId);
+            List<Long> mentioned = saveMentions(message, conversationId, senderId);
             conversationRepository.touch(conversationId, Instant.now());
+            publishCreated(message, mentioned);
         }
         return new SendResult(toDto(message, senderName(senderId)), created);
     }
@@ -145,11 +153,38 @@ public class MessageService {
 
     // ----------------------------------------------------------------- helpers
 
+    /**
+     * Same transaction as the message insert: the notification event exists if and only if the
+     * message does. A retry ({@code created == false}) never publishes a second event.
+     */
+    private void publishCreated(Message message, List<Long> mentionedUserIds) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("messageId", message.getId());
+        payload.put("conversationId", message.getConversationId());
+        payload.put("senderId", message.getSenderId());
+        payload.put("mentionedUserIds", mentionedUserIds);
+        payload.put("preview", preview(message.getContent()));
+        outboxEventPublisher.publish(MESSAGE_AGGREGATE, String.valueOf(message.getId()), MESSAGE_CREATED, payload);
+    }
+
+    /** Whitespace collapsed and cut to {@value #NOTIFICATION_PREVIEW_LENGTH} chars without splitting an emoji. */
+    static String preview(String content) {
+        String flat = content.strip().replaceAll("\\s+", " ");
+        if (flat.length() <= NOTIFICATION_PREVIEW_LENGTH) {
+            return flat;
+        }
+        int end = NOTIFICATION_PREVIEW_LENGTH - 1;
+        if (Character.isHighSurrogate(flat.charAt(end - 1))) {
+            end--;
+        }
+        return flat.substring(0, end) + "…";
+    }
+
     /** Only users who can actually read this conversation are recorded as mentioned. */
-    private void saveMentions(Message message, Long conversationId, Long senderId) {
+    private List<Long> saveMentions(Message message, Long conversationId, Long senderId) {
         Set<String> usernames = MentionParser.parse(message.getContent());
         if (usernames.isEmpty()) {
-            return;
+            return List.of();
         }
         List<MessageMention> mentions = mentionRepository.resolveUsernames(usernames).stream()
                 .map(row -> (Long) row[0])
@@ -159,6 +194,7 @@ public class MessageService {
                 .map(userId -> MessageMention.builder().messageId(message.getId()).mentionedUserId(userId).build())
                 .toList();
         mentionRepository.saveAll(mentions);
+        return mentions.stream().map(MessageMention::getMentionedUserId).toList();
     }
 
     static void validateContent(String content) {

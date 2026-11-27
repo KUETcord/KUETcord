@@ -284,13 +284,17 @@ Endpoint: `/ws` (SockJS) or `/ws/websocket` (native WebSocket). Origins follow `
 | `SEND` / `SUBSCRIBE` | `/app/conversations/{id}/typing`, `/topic/conversations/{id}/typing` | Members only. Client debounces to 1 ping/3 s, server throttles 2 s/user; event `{ conversationId, userId, timestamp }`, receiver clears after 4 s. No DB writes ✅ |
 | `SUBSCRIBE` | `/topic/presence` | Any authenticated user. `{ userId, status: ONLINE\|IDLE\|OFFLINE, timestamp }` on transitions only (multi-tab aware) ✅ |
 | `SEND` | `/app/presence` | `{ "status": "IDLE" \| "ONLINE" }` from tab visibility; affects only the sender's own session ✅ |
-| `SUBSCRIBE` | `/user/queue/notifications` | Own queue only — publisher in *Phase 4* |
+| `SUBSCRIBE` | `/user/queue/notifications` | Own queue only. Pushed by the outbox worker after the inbox row commits: `NotificationDto { id, type: MESSAGE\|MENTION\|TASK_ASSIGNED\|MILESTONE_REACHED\|STUDY_SESSION_SCHEDULED, title, preview, targetType, targetId, createdAt, read }` ✅ |
 
 ### Notification Center (Member B)
-- `GET /api/v1/notifications` — Paginated notification inbox
-- `GET /api/v1/notifications/unread-count` — Real-time unread badge count
-- `POST /api/v1/notifications/{id}/read` — Mark notification read
-- `PUT /api/v1/conversations/{id}/notification-preference` — Set Notify/Mute mode
+- `GET /api/v1/notifications?cursor=&limit=&unreadOnly=` — Own inbox, newest first, keyset paged (default 20, max 50); response includes `nextCursor`, `hasMore` and the inbox-wide `unreadCount` ✅
+- `GET /api/v1/notifications/unread-count` — Badge count `{ unreadCount }` ✅
+- `POST /api/v1/notifications/{id}/read` — Mark one read (idempotent). Someone else's ID → `404` ✅
+- `POST /api/v1/notifications/read-all` — Mark all read → `{ updated, unreadCount: 0 }` ✅
+- `GET /api/v1/conversations/{id}/notification-preference` — `{ mode, muteUntil, effectiveMode, defaultMode, explicit }`. Participants only ✅
+- `PUT /api/v1/conversations/{id}/notification-preference` — `{ "mode": "ALL_MESSAGES" | "MENTIONS_ONLY" | "MUTED", "muteUntil": "<ISO-8601>"? }`. `muteUntil` only with `MUTED`, in the future, at most 1 year ahead; omit it to mute until changed. Participants only ✅
+- Defaults when no preference is saved: DMs, group DMs and playgrounds → `ALL_MESSAGES`; channels and study circles → `MENTIONS_ONLY`. A mute is judged at the message's send time, so nothing suppressed is replayed after unmuting.
+- Outbox consumer: `MESSAGE_CREATED` (written by `MessageService.send` in the same transaction as the message), plus Member C's `TASK_ASSIGNED`, `MILESTONE_REACHED` and `STUDY_SESSION_SCHEDULED`. CT Hub events are left for their own consumer. Toggle with `OUTBOX_WORKER_ENABLED` (default `true`) ✅
 
 ### Contest & Challenge Board (Member C)
 - `GET /api/v1/opportunities` — Ranked, paged browse. Params: `strategy` (`deadline` default, or `recent`), `category` (`PROGRAMMING_CONTEST`, `HACKATHON`, `ROBOTICS`, `RESEARCH`, `CASE_COMPETITION`), `mode` (`ONLINE`, `ON_SITE`, `HYBRID`), `status` (`UNVERIFIED`, `VERIFIED`), `deadlineBefore` (ISO-8601), `q` (title/organizer search), `bookmarkedOnly`, `page`, `size` (max 50)
@@ -422,7 +426,8 @@ Inspired by **Discord's Engineering Case Study on Scaling Communities (*Guilds*)
 | **App / Concurrency** | **Bulkhead Thread-Pool Isolation** | Isolated executors: `ws-inbound`, `ws-outbound`, `fanout-worker`, `outbox-worker` | Heavy notification processing cannot starve HTTP login or WebSocket heartbeat ping threads |
 | **Storage (DB)** | **Keyset Seek Cursor Pagination** | `WHERE id < :cursor ORDER BY id DESC LIMIT 30` over index `(conversation_id, id DESC)` | $O(\log N)$ direct B-Tree traversal ($< 2\text{ms}$) vs $O(N)$ `OFFSET` table scan ($> 800\text{ms}$) |
 | **Storage (DB)** | **JDBC Statement Batching** | `reWriteBatchedInserts=true`, `hibernate.jdbc.batch_size=50` | Reduces database round trips by $98\%$; 200 notifications insert in 4 batched queries |
-| **Storage (DB)** | **Outbox Chunk Polling** | `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 50` | Lock-free worker polling; eliminates transaction deadlocks between worker threads |
+| **Storage (DB)** | **Single-Statement Fan-In** | Notification worker inserts every recipient of an event with one `INSERT ... SELECT FROM unnest(arrays) ON CONFLICT DO NOTHING RETURNING` | 1 round trip per event regardless of recipient count; `RETURNING` only new rows, so replays never double-push |
+| **Storage (DB)** | **Outbox Chunk Polling** | `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 50` inside a claim `UPDATE` that leases rows (`PROCESSING` + 30 s lease); each event then commits in its own transaction | Workers never wait on each other's locks; a crashed worker's rows are re-claimed after the lease; retries back off 2^n s and dead-letter after 5 attempts |
 | **App / ORM** | **Hibernate Dirty-Checking Bypass** | Class-level `@Transactional(readOnly = true)` | Sets `FlushMode.MANUAL`; skips hydration snapshots and dirty-checking, cutting heap by $40\%$ |
 | **App / ORM** | **Direct DTO Projections** | JPQL `SELECT new com.kuetcord.dto.TaskCardDto(...)` | Streams JDBC ResultSets directly to record DTOs; prevents JPA $N+1$ and proxy overhead |
 | **In-Memory** | **Caffeine L1 Cache** | In-memory cache for courses (60m), roles (30m), permissions (2m) | $85\%$ cache hit ratio; cuts chat authorization overhead from $3.5\text{ms}$ to $< 0.05\text{ms}$ ($50\mu\text{s}$) |

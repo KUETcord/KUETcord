@@ -135,10 +135,52 @@ Group size is enforced at 3–25 participants; every participant must be an `ACT
 ### 2.1b Resilience Summary
 - **Client Idempotency Deduplication:** a PostgreSQL unique index on `(conversation_id, sender_id, idempotency_key)` plus `ON CONFLICT DO NOTHING` guarantees zero duplicates on retry, and the client always retries with the same key.
 
-### 2.2 Notification Center & Preferences
-- **Strategy Pattern Policy:** `AllMessagesStrategy`, `MentionsOnlyStrategy`, `MutedStrategy` determine eligibility per recipient and conversation.
-- **Transactional Outbox Worker:** Scheduled worker polling `outbox_events` with `SELECT ... FOR UPDATE SKIP LOCKED` guarantees reliable at-least-once processing without thread contention.
-- **Persistent Inbox:** Read-state tracking, unread count badge, and private live push to `/user/queue/notifications`.
+### 2.2 Notification Center, Notify/Mute Preferences & Outbox Worker (Phase 4 — implemented)
+
+**No new migration:** `notification_preferences` (V2) and the `notifications` / outbox columns from V5 already had the shape this phase needs. The only shared-code touch is a new `PROCESSING` value in Member A's `OutboxStatus` enum (V5 had already documented that status).
+
+**Pipeline (package `com.kuetcord.notifications`):**
+```
+MessageService.send ─┐ same TX as the message (only when the row is new, never on a retry)
+C's emitters ────────┴─> outbox_events (PENDING)
+                              │ OutboxWorker: private "outbox-worker-" scheduler, every 1 s
+                              ▼
+   claim: WITH picked AS (SELECT id ... FOR UPDATE SKIP LOCKED LIMIT 50)
+          UPDATE ... SET status='PROCESSING', next_attempt_at = now()+30 s   (lease)
+                              │ one REQUIRES_NEW transaction per event
+                              ▼
+   handler -> NotificationPolicy (Strategy) -> INSERT ... SELECT FROM unnest(...)
+              ON CONFLICT (recipient, source_event_id, type) DO NOTHING RETURNING
+                              │ afterCommit
+                              ▼
+                /user/queue/notifications (every open tab of each recipient)
+```
+- **Claim with a lease, not a long lock.** Rows stay locked only for the claim statement, so a slow event never blocks other workers. A worker that crashes leaves rows `PROCESSING`; when the lease expires they can be claimed again, and the dedup key absorbs any duplicate insert.
+- **Per-event transactions:** one bad event can't roll back its batch. On failure: `retry_count + 1`, `last_error_code` (exception class), backoff `2^n` s (capped at 5 min), and `DEAD_LETTER` after 5 attempts.
+- **Only claims what it can handle.** The claim filters `event_type = ANY(handled types)`, so CT Hub's e-mail events (`CT_APPROVAL_REQUESTED`, ...) are never taken from Member A's consumer.
+- **One round trip per event:** all recipients go in a single `unnest` insert. `RETURNING` yields only new rows, so a replay never pushes twice. Recipients whose account was deleted are skipped instead of failing the foreign key.
+- **Bulkhead:** the scheduler is not a Spring bean. A second `TaskScheduler` bean would change what `@Scheduled` resolves to (the broker already registers `messageBrokerTaskScheduler`), and sharing one would let a drain delay heartbeats. Tests disable the loop (`kuetcord.outbox.worker.enabled=false`) and call `OutboxProcessor` directly.
+
+**Strategy pattern (`NotificationPolicy` + `NotificationPolicyStrategy`):**
+
+| Mode | Strategy | Notifies on |
+|---|---|---|
+| `ALL_MESSAGES` | `AllMessagesStrategy` | every message from someone else |
+| `MENTIONS_ONLY` | `MentionsOnlyStrategy` | `@mentions` of the recipient |
+| `MUTED` (+ optional `muteUntil`) | `MutedStrategy` | nothing, mentions included |
+
+- No saved preference: `DIRECT`, `GROUP_DM`, `PLAYGROUND` → all messages; `CHANNEL`, `STUDY_CIRCLE` → mentions only.
+- A timed mute is judged at the **message's send time**, not at processing time. Messages sent while muted stay silent even if the worker only reaches them after the mute ended, and nothing suppressed is ever replayed on unmute. An expired mute falls back to the type default.
+- The registry refuses to boot with a missing or duplicate strategy.
+
+**Who is a candidate (`MessageCreatedHandler`):**
+- DMs and group DMs: active participants.
+- Channels: mentioned users, plus users who explicitly chose `ALL_MESSAGES`. A 2,000-member channel is never scanned per message.
+- The sender is always excluded. Preferences for all candidates load in one query. Non-participant candidates are re-checked with `ConversationAccessPolicy`, because access may have been lost since sending. Soft-deleted messages notify nobody.
+
+**Collaboration events (Member C):** `TASK_ASSIGNED` (self-assignment skipped), `MILESTONE_REACHED` and `STUDY_SESSION_SCHEDULED` use the `recipientIds` the emitters compute inside their own transactions. Targets are `PLAYGROUND` / `STUDY_CIRCLE`.
+
+**REST:** inbox (keyset, newest first, `unreadOnly`), unread count, mark one read (idempotent; another user's ID → 404), mark all read, and per-conversation preference GET/PUT. See the central [README](./README.md#notification-center-member-b) for the contract.
 
 ---
 
@@ -148,8 +190,8 @@ Group size is enforced at 3–25 participants; every participant must be an `ACT
 |---|---|---|---|
 | **Week 1** | Nov 10 – Nov 19 | ✅ `V5` schema alignment migration; Community/Conversation/Message JPA models; `ConversationAccessPolicy` (fail-closed, per-type resolvers); Community RBAC (bitmask + hierarchy + Caffeine cache); Community, DM & Group DM REST APIs; 20 new tests | PR #4 (merged) |
 | **Week 2** | Nov 20 – Nov 23 | ✅ STOMP broker + SockJS, 10s/10s heartbeats, bulkhead pools, slow-consumer limits; JWT `CONNECT` interceptor; fail-closed SUBSCRIBE/SEND guard + 5 frames/s rate limit; idempotent send with RECEIPT-after-commit and async fan-out; `/user/queue/errors`; keyset history; monotonic read state + unread counts; `@mention` resolution; 16 new tests | PR #7 (merged) |
-| **Week 3** | Nov 24 – Nov 30 | ✅ `/sync` gap catch-up; multi-tab presence (ONLINE/IDLE/OFFLINE) + snapshot API; throttled ephemeral typing; real-socket dead-socket chaos test; frontend `/messaging`: reconnect state machine + backoff/jitter, durable STOMP subscriptions, optimistic SENDING/SENT/FAILED with same-key retry, `/sync` on reconnect, virtualized feed, typing & presence UI, break-ui fixtures; 9 backend + 27 frontend tests | `feature/resilience-sync-presence` (PR pending) |
-| **Week 4** | Dec 01 – Dec 07 | Notification Center backend, Strategy pattern for preferences, Outbox worker (`SKIP LOCKED`) | PR #22, PR #25 |
+| **Week 3** | Nov 24 – Nov 30 | ✅ `/sync` gap catch-up; multi-tab presence (ONLINE/IDLE/OFFLINE) + snapshot API; throttled ephemeral typing; real-socket dead-socket chaos test; frontend `/messaging`: reconnect state machine + backoff/jitter, durable STOMP subscriptions, optimistic SENDING/SENT/FAILED with same-key retry, `/sync` on reconnect, virtualized feed, typing & presence UI, break-ui fixtures; 9 backend + 27 frontend tests | PR #11 (merged) |
+| **Week 4** | Nov 27 – Dec 07 | ✅ Notification Center backend: `MESSAGE_CREATED` outbox event in the send transaction; lease-based `SKIP LOCKED` outbox worker on a private `outbox-worker-` scheduler with per-event transactions, exponential backoff and dead-lettering; Strategy-pattern Notify/Mute (`ALL_MESSAGES`/`MENTIONS_ONLY`/`MUTED` + `muteUntil`, judged at send time); single-statement `unnest` inbox insert with dedup; live push to `/user/queue/notifications` after commit; inbox + preference REST APIs; consumes Member C's task/milestone/study-session events; 16 new tests | `feature/notification-center-outbox` (PR pending) |
 | **Week 5** | Dec 08 – Dec 14 | Virtualized chat UI (`react-virtuoso`), Notification bell & mute dropdown, k6 load testing | PR #28, PR #32 |
 | **Week 6** | Dec 15 – Dec 21 | Cross-module chat wiring (Playground/Study), presentation rehearsal, demo resilience tests | PR #36 |
 
@@ -201,8 +243,11 @@ Only suites that exist and have been run are marked PASS; everything else is `PE
 | **Frontend Unit** | `RealtimeClient.test.ts` (4) | `RealtimeClient` | PASS | Bearer CONNECT, re-subscribe after reconnect, backoff timing, onReconnect only on re-connect, UNAUTHORIZED stops retries, publish resolves on RECEIPT |
 | **Frontend Unit** | `messageStore.test.ts` (5) | Optimistic reducer | PASS | Optimistic ↔ broadcast reconciliation, live + /sync overlap dedupe, FAILED → retry → late success, prepend history |
 | **Adversarial UI (`break-ui`)** | `VirtualizedChatFeed.test.tsx` (5), `MessagingPage.test.tsx` (5) | Chat feed & page | PASS | 2,000-char word wraps; `shrink-0` avatars; delivery states + Retry; 5,000 msgs → < 60 DOM rows; 99+ badge; pluralization; empty states; > 2,000 chars blocked |
-| **Unit / Strategy** | `NotificationPolicyStrategyTest` | `MutedStrategy` et al. | PENDING (Phase 4) | — |
-| **Concurrency / Outbox** | `OutboxSkipLockedIntegrationTest` | `OutboxProcessor` | PENDING (Phase 4) | — |
+| **Unit / Strategy** | `NotificationPolicyStrategyTest` (4) | `NotificationPolicy` + 3 strategies | PASS | Each mode; defaults per conversation type; timed mute judged at send time, `muteUntil` exclusive, expired → type default; registry fails fast on missing/duplicate strategy |
+| **Concurrency / Outbox** | `OutboxSkipLockedIntegrationTest` (5) | `OutboxProcessor` on real row locks | PASS | 4 workers × 120 events → each claimed exactly once, 120 notifications, 0 duplicates; a row locked by another TX is skipped without waiting; expired lease re-claimed, live lease untouched; failing event backs off then `DEAD_LETTER` after 5 without blocking its batch; CT events never claimed |
+| **Integration (REST/DB)** | `NotificationIsolationIntegrationTest` (5) | message → outbox → worker → inbox | PASS | Bob muted / Carol not → only Carol notified; unmute replays nothing; backlog after mute expiry stays silent; MENTIONS_ONLY → only `@mention` (type `MENTION`); sender never notified; keyset inbox pages, idempotent mark-read, other user's ID 404, read-all isolation; preference validation 400s, outsider 403 |
+| **Protocol / WebSocket** | `WebSocketStompIntegrationTest` (+1) | `/user/queue/notifications` | PASS | Live push reaches the recipient only (not sender, not outsider); re-draining pushes nothing twice |
+| **Unit Testing** | `MessageServiceTest` (+1) | Outbox payload | PASS | A retry never enqueues a second event; preview collapses whitespace and cuts at 140 chars without splitting an emoji |
 | **Performance & Load** | `k6_chat_pagination.js` | `GET /api/v1/conversations/{id}/messages` | PENDING (Phase 5) | — |
 | **CI/CD Smoke Testing** | `deploy.yml` Actuator Health | `/actuator/health` | PENDING (Phase 6) | — |
 
@@ -211,6 +256,8 @@ Only suites that exist and have been run are marked PASS; everything else is `PE
 **Phase 2 local run (2026-11-21, JDK 21, PostgreSQL 16, rebased on develop incl. CT Hub + Contest Board):** `mvn verify` → surefire `Tests run: 104, Failures: 0, Errors: 0` (36 Member B), failsafe `Tests run: 2, Failures: 0`, `BUILD SUCCESS`.
 
 **Phase 3 local run (2026-11-24, rebased on develop incl. Playgrounds #8, UI shell #9, Teacher approval #10):** `mvn verify` → surefire `Tests run: 156, Failures: 0, Errors: 0`, failsafe `Tests run: 2, Failures: 0`, `BUILD SUCCESS`. Frontend `npm run typecheck` clean, `npm run test` → `Tests 37 passed (37)`, `npm run build` ✓.
+
+**Phase 4 local run (2026-11-27, rebased on develop incl. Study Circles #12, Docker/k6/CD #13):** `mvn verify` → surefire `Tests run: 208, Failures: 0, Errors: 0` (16 new Member B), failsafe `Tests run: 5, Failures: 0`, `BUILD SUCCESS`. No frontend changes in this phase.
 
 ---
 
@@ -225,6 +272,9 @@ Only suites that exist and have been run are marked PASS; everything else is `PE
   - *Decision:* negotiate `heart-beat:10000,10000` and run broker heartbeats on a dedicated, non-bean 2-thread `ws-heartbeat-` scheduler. Spring's simple broker closes a session after 3 silent intervals.
   - *Consequences:* zombies are evicted within ≤ 30 s and the eviction raises `SessionDisconnectEvent` (Phase 3 presence hooks in here). Heartbeat threads can't be starved by chat fan-out or future `@Scheduled` jobs. Cost: one `\n` frame per 10 s per idle socket. The simple broker supports one instance only; scaling out would need a broker relay.
 - **ADR-006:** Use of PostgreSQL `FOR UPDATE SKIP LOCKED` for Reliable Multi-Thread Outbox Polling.
+  - *Context:* notifications must be created for every committed message or domain event, even across crashes, without Kafka/SQS ($0 budget). Several worker threads (or instances) must not process one event twice or block each other.
+  - *Decision:* transactional outbox in PostgreSQL. Claim batches with `FOR UPDATE SKIP LOCKED` inside one `UPDATE` that leases the rows (`PROCESSING`, `next_attempt_at = now() + 30 s`), then process each event in its own transaction. Exactly-once *effects* come from the `uq_notification_dedup` key rather than from holding locks.
+  - *Consequences:* delivery is at-least-once with idempotent inserts, so duplicates are impossible and losses need the DB itself to lose data. Notification latency is ≈ the 1 s poll interval. Poison events stop after 5 attempts as `DEAD_LETTER` with an error code for inspection. No lock is held while handlers run, so a slow handler can't stall the queue.
 
 ---
 

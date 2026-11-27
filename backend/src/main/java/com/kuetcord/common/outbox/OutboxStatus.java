@@ -5,6 +5,8 @@ package com.kuetcord.common.outbox;
  */
 public enum OutboxStatus {
     PENDING,
+    /** Leased by a worker; reclaimable once {@code next_attempt_at} (the lease end) has passed. */
+    PROCESSING,
     PROCESSED,
     DEAD_LETTER
 }
