@@ -700,3 +700,5 @@ npm run test -- VirtualizedChatFeed.test.tsx NotificationBell.test.tsx
    - Shared `<CourseworkHubView workType="ASSIGNMENT" | "PRESENTATION" />` adhering to `DESIGN_GUIDELINES.md`.
    - **"My Batch (`e.g. 3-1 · CSE`)"** filter **active by default** when user has `yearTerm` set (1-click toggle to `"All Terms"`), plus `Year–Term` (`1-1`..`4-2`) filter when browsing or posting.
    - Render safe external CTA pills (`target="_blank" rel="noopener noreferrer"`) for **Submit Work** (`submissionLink`) and **Submitted List** (`submittedListLink`) whenever provided, plus an **Edit Links** modal for CRs/Teachers.
+5. **Academic Calendar Sync (`CalendarEventProvider` SPI):**
+   - Implement `CourseworkCalendarEventProvider implements CalendarEventProvider` returning `ASSIGNMENT` and `PRESENTATION` items (filtered by `from`, `to`, `yearTerm`, `department`, `batch`) so Member A's Google Calendar-style `/calendar` tab automatically stays in sync with Assignment Hub and Presentation Hub deadlines (including `locationOrRoom`, `submissionLink`, and `submittedListLink`).

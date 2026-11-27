@@ -636,3 +636,6 @@ npm run test -- AppShell.test.tsx CtCard.test.tsx
    - Default **"My Batch (`e.g. 3-1 · CSE`)"** filter **active by default** for students with `yearTerm` set (1-click toggle to `"All Terms"`), plus explicit `Year–Term` selector when CRs/Teachers/Mods/Admins propose CTs.
 6. **`<AppShell />` Navigation Slots Ready for Members B & C:**
    - Expose sidebar entries & placeholder/ready route wiring for `/account`, `/admin` (Mod/Admin only), `/assignments` (Member B), `/presentations` (Member B), and `/course-projects` (Member C).
+7. **Academic Calendar Tab (`/calendar` — Wave 1B, branch `feature/calendar-academic-hub`):**
+   - Backend SPI: `CalendarEventType` (`CT`, `ASSIGNMENT`, `PRESENTATION`, `PROJECT`), `CalendarEventDto`, `CalendarEventProvider` interface, `CtCalendarEventProvider`, `CalendarService`, and `GET /api/v1/calendar/events?from=&to=&types=&yearTerm=&department=&batch=`.
+   - Frontend (`CalendarPage.tsx`): Google Calendar (web) style **Month / Week / Schedule** views with color-coded checkboxes (`CT`, `Assignments`, `Presentations`, `Project Showcase`), default-active **"My Batch (`Year–Term`)"** filter + `Year–Term` (`1-1`..`4-2`) selector, `+N more` day overflow, and event detail popover with room & submission links.
