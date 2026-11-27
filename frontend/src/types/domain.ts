@@ -102,3 +102,27 @@ export interface CtEventDetail {
   event: CtEventSummary;
   history: CtEventHistory[];
 }
+
+export type CalendarEventType = 'CT' | 'ASSIGNMENT' | 'PRESENTATION' | 'PROJECT';
+
+export interface CalendarEvent {
+  id: string;
+  sourceId: number;
+  type: CalendarEventType;
+  title: string;
+  courseOfferingId: number;
+  courseCode: string;
+  courseTitle: string;
+  department: string | null;
+  yearTerm: string | null;
+  targetBatch: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  durationMinutes: number | null;
+  room: string | null;
+  status: string;
+  assignedTeacherName: string | null;
+  submissionLink: string | null;
+  submittedListLink: string | null;
+  hubPath: string;
+}

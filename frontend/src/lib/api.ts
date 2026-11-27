@@ -1,5 +1,7 @@
 import type {
   AuthResponse,
+  CalendarEvent,
+  CalendarEventType,
   CourseFollowStatus,
   CourseOffering,
   CtEventDetail,
@@ -384,5 +386,28 @@ export const adminApi = {
     return request<void>(`/admin/users/${userId}`, {
       method: 'DELETE',
     });
+  },
+};
+
+export const calendarApi = {
+  listEvents(params?: {
+    types?: CalendarEventType[];
+    from?: string;
+    to?: string;
+    department?: string;
+    yearTerm?: string;
+    batch?: string;
+  }): Promise<CalendarEvent[]> {
+    const qs = new URLSearchParams();
+    if (params?.types && params.types.length > 0) {
+      qs.set('types', params.types.join(','));
+    }
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to) qs.set('to', params.to);
+    if (params?.department) qs.set('department', params.department);
+    if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
+    if (params?.batch) qs.set('batch', params.batch);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<CalendarEvent[]>(`/calendar/events${suffix}`);
   },
 };

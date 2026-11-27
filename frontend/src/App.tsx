@@ -6,6 +6,7 @@ import { RealtimeProvider } from './context/RealtimeContext';
 import { AccountPage } from './pages/AccountPage';
 import { AdminConsolePage } from './pages/AdminConsolePage';
 import { AuthPage } from './pages/AuthPage';
+import { CalendarPage } from './pages/CalendarPage';
 import { CampusPulsePage } from './pages/CampusPulsePage';
 import { CtHubPage } from './pages/CtHubPage';
 import { MessagingPage } from './pages/MessagingPage';
@@ -23,6 +24,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<OverviewPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/ct-hub" element={<CtHubPage />} />
         <Route
           path="/assignments"
