@@ -52,3 +52,7 @@ kuetcord:
   google:
     client-id: test-google-client-id.apps.googleusercontent.com
   frontend-url: http://localhost:5173
+  # Tests drive OutboxProcessor directly; a background drain would race their assertions.
+  outbox:
+    worker:
+      enabled: false

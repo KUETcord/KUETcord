@@ -3,6 +3,7 @@ package com.kuetcord.messaging.service;
 import com.kuetcord.auth.repository.UserRepository;
 import com.kuetcord.common.exception.BadRequestException;
 import com.kuetcord.common.exception.ForbiddenException;
+import com.kuetcord.common.outbox.OutboxEventPublisher;
 import com.kuetcord.messaging.access.ConversationAccessPolicy;
 import com.kuetcord.messaging.model.Message;
 import com.kuetcord.messaging.repository.ConversationReadStateRepository;
@@ -41,17 +42,19 @@ class MessageServiceTest {
 
     private MessageRepository messageRepository;
     private ConversationAccessPolicy accessPolicy;
+    private OutboxEventPublisher outboxEventPublisher;
     private MessageService service;
 
     @BeforeEach
     void setUp() {
         messageRepository = mock(MessageRepository.class);
         accessPolicy = mock(ConversationAccessPolicy.class);
+        outboxEventPublisher = mock(OutboxEventPublisher.class);
         UserRepository userRepository = mock(UserRepository.class);
         when(userRepository.findById(any())).thenReturn(Optional.empty());
         service = new MessageService(messageRepository, mock(MessageMentionRepository.class),
                 mock(ConversationRepository.class), mock(ConversationReadStateRepository.class),
-                accessPolicy, userRepository);
+                accessPolicy, userRepository, outboxEventPublisher);
     }
 
     @Test
@@ -67,6 +70,18 @@ class MessageServiceTest {
         assertFalse(result.created());
         assertEquals(1055L, result.message().id());
         verify(messageRepository, never()).insertIfAbsent(anyLong(), anyLong(), anyString(), anyString());
+        verifyNoInteractions(outboxEventPublisher); // a retry must never enqueue a second notification event
+    }
+
+    @Test
+    @DisplayName("Notification preview collapses whitespace and cuts at 140 chars without splitting an emoji")
+    void shouldBuildCompactNotificationPreview() {
+        assertEquals("hello team, CT 2 is moved", MessageService.preview("  hello\n\n team,\tCT 2   is moved "));
+
+        String longText = "a".repeat(138) + "🚀" + "tail";
+        String preview = MessageService.preview(longText);
+        assertEquals("a".repeat(138) + "…", preview, "the rocket emoji straddles the cut and is dropped whole");
+        assertEquals(MessageService.NOTIFICATION_PREVIEW_LENGTH - 1, preview.length());
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.kuetcord.messaging.websocket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kuetcord.messaging.dto.CreateGroupRequest;
 import com.kuetcord.messaging.service.ConversationService;
+import com.kuetcord.notifications.outbox.OutboxProcessor;
 import com.kuetcord.support.MessagingTestUsers;
 import com.kuetcord.support.MessagingTestUsers.TestUser;
 import org.junit.jupiter.api.AfterEach;
@@ -72,6 +73,9 @@ class WebSocketStompIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private OutboxProcessor outboxProcessor;
 
     private ThreadPoolTaskScheduler clientScheduler;
     private WebSocketStompClient stompClient;
@@ -233,6 +237,39 @@ class WebSocketStompIntegrationTest {
     }
 
     // ----------------------------------------------------------------- helpers
+
+    @Test
+    @DisplayName("Outbox worker pushes the committed notification to /user/queue/notifications of the recipient only")
+    void shouldPushNotificationToPrivateUserQueue() throws Exception {
+        Client aliceClient = connect(alice);
+        Client bobClient = connect(bob);
+        Client daveClient = connect(dave);
+        BlockingQueue<Map<String, Object>> bobQueue = subscribe(bobClient, bob, "/user/queue/notifications");
+        BlockingQueue<Map<String, Object>> aliceQueue = subscribe(aliceClient, alice, "/user/queue/notifications");
+        BlockingQueue<Map<String, Object>> daveQueue = subscribe(daveClient, dave, "/user/queue/notifications");
+
+        assertTrue(sendWithReceipt(aliceClient, Map.of("content", "Viva slides are in the drive",
+                "idempotencyKey", UUID.randomUUID().toString())));
+        outboxProcessor.drainAll();
+
+        Map<String, Object> pushed = bobQueue.poll(TIMEOUT_S, TimeUnit.SECONDS);
+        assertNotNull(pushed, "Bob must get a live notification after the worker commits");
+        assertEquals("MESSAGE", pushed.get("type"));
+        assertEquals("Alice in CSE 3220 Lab Team", pushed.get("title"));
+        assertEquals("Viva slides are in the drive", pushed.get("preview"));
+        assertEquals(groupId, ((Number) pushed.get("targetId")).longValue());
+        assertEquals(Boolean.FALSE, pushed.get("read"));
+        assertNull(aliceQueue.poll(500, TimeUnit.MILLISECONDS), "The sender is never notified about their own message");
+        assertNull(daveQueue.poll(200, TimeUnit.MILLISECONDS), "Non-members receive nothing");
+
+        // Replaying the drain (e.g. after a crash) inserts nothing new and pushes nothing twice.
+        outboxProcessor.drainAll();
+        assertNull(bobQueue.poll(500, TimeUnit.MILLISECONDS));
+
+        aliceClient.session.disconnect();
+        bobClient.session.disconnect();
+        daveClient.session.disconnect();
+    }
 
     private Map<String, Object> nextPresenceFor(BlockingQueue<Map<String, Object>> events, TestUser user) throws InterruptedException {
         Map<String, Object> event = nextPresenceFor(events, user, TIMEOUT_S);

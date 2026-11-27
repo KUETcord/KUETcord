@@ -90,3 +90,11 @@ kuetcord:
   google:
     client-id: ${GOOGLE_CLIENT_ID:local-dev-google-client-id.apps.googleusercontent.com}
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  # Transactional outbox -> notification inbox worker (Member B). Private outbox-worker- thread.
+  outbox:
+    worker:
+      enabled: ${OUTBOX_WORKER_ENABLED:true}
+      poll-interval-ms: 1000
+      batch-size: 50
+      lease-seconds: 30
+      max-attempts: 5
