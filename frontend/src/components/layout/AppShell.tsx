@@ -46,7 +46,9 @@ export function AppShell() {
   const { user, isDemoMode, enterDemoMode, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  const currentTitle = ROUTE_TITLES[location.pathname] ?? 'KUETcord';
+  // Detail routes such as /opportunities/101 fall back to their section title.
+  const currentTitle =
+    ROUTE_TITLES[location.pathname] ?? ROUTE_TITLES[`/${location.pathname.split('/')[1]}`] ?? 'KUETcord';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
