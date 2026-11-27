@@ -39,6 +39,9 @@ jobs:
       SPRING_DATASOURCE_USERNAME: kuetcord_admin
       SPRING_DATASOURCE_PASSWORD: kuetcord_secure_pass
       PGPASSWORD: kuetcord_secure_pass
+      # No SMTP server in this job: verification mail fails softly, but the mail health indicator
+      # would report DOWN and keep /actuator/health at 503.
+      MANAGEMENT_HEALTH_MAIL_ENABLED: 'false'
       LOAD_EMAIL: k6.loadtest@stud.kuet.ac.bd
       LOAD_PASSWORD: LoadTest-2026!
 
