@@ -72,5 +72,11 @@ describe('CT Hub UI, Teacher Approval RBAC & Adversarial break-ui Stress Tests',
     expect(screen.queryByRole('button', { name: /^Approve$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Reschedule$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Cancel$/i })).not.toBeInTheDocument();
+
+    // Cross-module Study Circles deep link renders on CT cards with ?courseId=
+    const studyLinks = screen.getAllByRole('link', { name: /Study Circles/i });
+    expect(
+      studyLinks.some((link) => link.getAttribute('href')?.includes('/study-circles?courseId=')),
+    ).toBe(true);
   });
 });
