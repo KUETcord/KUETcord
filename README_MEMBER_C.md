@@ -123,6 +123,36 @@ flowchart LR
 
 **Not in Week 2 (by plan):** outbox events for `TASK_ASSIGNED` / `MILESTONE_REACHED`, marking milestones complete, linking an opportunity to a playground, and the shared team chat (`conversation_id`) are Week 3 and Week 6 work.
 
+#### 2.2.2 Week 4 implementation (frontend: Contest Board & Kanban UI, done)
+
+**Screens** (mounted in Member A's `AppShell`, replacing the placeholder slots):
+
+| Route | Screen | What it does |
+|---|---|---|
+| `/opportunities` | `OpportunitiesPage` | Ranked contest cards with deadline badges ("2 days left", "Closed"), category chips, a debounced title/organizer search, a "Nearest deadline / Recently published" strategy toggle, a "Bookmarked" filter and optimistic bookmark toggles with rollback. |
+| `/opportunities/:id` | `OpportunityDetailPage` | Eligibility, dates, team size, mode, an "Official source" button (new tab, `rel="noopener noreferrer"`), bookmark count, the teams already formed, and **Start Project Playground**, which creates a linked team and opens its board (disabled once registration has closed). |
+| `/playgrounds` | `PlaygroundsPage` | "My playgrounds" with role, member count and last update, plus a quick create form. |
+| `/playgrounds/:id` | `PlaygroundWorkspacePage` | Header (members, tags, repo, "Formed for" contest links) and Radix tabs: **Board**, **Milestones**, **Decision log**. |
+
+**Kanban board (`KanbanBoard`, Days 3-4):**
+- Five fixed columns in order, with counts and a dotted placeholder in empty columns ("No tasks in review").
+- Cards show priority badge, due date (overdue in red), and the assignee's initials avatar (`shrink-0`).
+- Cards move by **drag and drop** (`@dnd-kit/core`, pointer and keyboard sensors) or by a per-card **status dropdown**, the accessible path. Both call one `moveTask` handler.
+- **Optimistic update:** the card jumps to the bottom of its new column at once (same rule as the server), then `PATCH` sends `expectedVersion`. On success the card takes the server's new version.
+- **On 409:** only that card rolls back, and a non-modal `ConflictBanner` explains that a teammate changed it first. **Load Latest Changes** reloads the board.
+- A new-task form offers only LEAD and CONTRIBUTOR members as assignees. VIEWERs, visitors and archived playgrounds get a read-only board.
+- The lifted card is rendered in a `DragOverlay` with `scale(1.03)` and `shadow-xl` (transform and opacity only, no layout animation).
+
+**Milestones and decisions (Day 5):** `MilestoneTimeline` is a vertical rail, soonest first, with an overdue badge and "Mark reached / Reopen" (the PATCH that emits `MILESTONE_REACHED`). `DecisionLog` is an accessible accordion (`aria-expanded` / `aria-controls`), newest first, with the rationale revealed on expand; a newly recorded decision opens at the top.
+
+**One data layer, two sources (`lib/collab`):**
+- Every screen talks to a `CollabSource` interface.
+- `liveCollabSource` calls the Spring API with the shared `request()` client (JWT, `ApiError` with HTTP status).
+- In preview mode, `demoCollabSource` serves an in-memory store that enforces the same rules as the server: per-playground roles, the archived freeze, mandatory `expectedVersion` with a real `ApiError(409)`, end-of-column moves, idempotent bookmarks, and DeadlineFirst ranking.
+- Switching the preview role in the sidebar re-scopes it. The Teacher sees the demo board as a read-only VIEWER; the CR as LEAD.
+- **Preview: simulate a teammate edit** moves a card behind your back, so the 409 banner can be shown live in a demo.
+- Pure board logic (`moveCard`, `replaceCard`, `deadlineBadge`) lives in `lib/collab/kanban.ts` and is unit-tested.
+
 ### 2.3 Study Circles & Campus Pulse
 - **Peer Study Sessions:** Scheduled sessions stored with UTC timestamps and rendered in local time; links to Member A's course offerings.
 - **Pomodoro Timer Widget:** Frontend circular countdown timer for focused revision sprints.
@@ -185,7 +215,7 @@ flowchart LR
 | **Week 1** | Nov 10 – Nov 20 | ✅ `V6` opportunity hardening migration; `Opportunity` / `OpportunityBookmark` entities, repositories & DTOs; Ranking Strategy Pattern (`deadline`, `recent`) with resolver; multi-facet browse API; detail, submit, moderator verify; idempotent race-safe bookmarks; 400 handling for malformed requests; 24 new tests | [PR #5](https://github.com/KUETcord/KUETcord/pull/5) (`feature/opportunities-contest-board`) |
 | **Week 2** | Nov 17 – Nov 23 | ✅ `V9` playground/Kanban hardening migration; `Playground`, `PlaygroundMember`, `ProjectTask`, `ProjectMilestone`, `ProjectDecision` entities; `LEAD` / `CONTRIBUTOR` / `VIEWER` access policy (private playgrounds hidden with 404, archived playgrounds frozen); playground create / list / detail / PATCH / invite APIs; Kanban board + task CRUD with `@Version` optimistic locking mapped to 409; milestones and decision log endpoints; N+1-free projections; 38 new tests | [PR #8](https://github.com/KUETcord/KUETcord/pull/8) (`feature/playgrounds-kanban-board`) |
 | **Week 3** | Nov 24 – Nov 30 | ✅ `V12` migration; Study Circles (directory with course filter, join, members-only sessions and resources); UTC session scheduler with overlap guard; Campus Pulse feed with staff-only publishing; transactional outbox events `TASK_ASSIGNED`, `MILESTONE_REACHED`, `STUDY_SESSION_SCHEDULED`; milestone completion (exactly-once under races); opportunity -> playground team formation; 32 new tests | [PR #12](https://github.com/KUETcord/KUETcord/pull/12) (`feature/study-circles-pulse-outbox`) |
-| **Week 4** | Dec 01 – Dec 07 | Frontend Contest directory with filters, Interactive Kanban Board (`@dnd-kit/core`) | PR #23, PR #26 |
+| **Week 4** | Dec 01 – Dec 07 | ✅ Contest Board UI (deadline badges, category chips, search, strategy toggle, optimistic bookmarks); opportunity detail with official source and "Start Project Playground"; playground list and workspace; drag-and-drop + dropdown Kanban with optimistic moves, rollback and the 409 "Load Latest Changes" banner; milestone timeline and decision-log accordion; demo data source that enforces the server rules; 32 new frontend tests | `feature/contest-board-kanban-ui` |
 | **Week 5** | Dec 08 – Dec 14 | Study Circle Hub, Pomodoro widget, k6 load testing on task updates, N+1 query elimination | PR #30, PR #33 |
 | **Week 6** | Dec 15 – Dec 21 | Link Playground/Study chat to Member B's engine, presentation rehearsal, demo polish | PR #37 |
 
@@ -194,11 +224,13 @@ flowchart LR
 ## 4. UI Craft & Design Guidelines Implementation (From `skills-main`)
 
 In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowalski’s `skills-main`:
-- **Kanban Drag-and-Drop:** Implemented with `@dnd-kit/core`. Dragged cards scale to `scale(1.03)` with dynamic drop-shadow (`shadow-xl`) and smooth layout animation on drop.
-- **Conflict Dialog:** When a 409 collision occurs, a non-modal conflict banner displays with `"Load Latest Changes"`.
-- **Pomodoro Timer:** Digits use `font-variant-numeric: tabular-nums` to eliminate jitter as seconds tick down.
-- **Toasts:** Integrated `sonner` for task assignment notifications and bookmark confirmations.
-- **Adversarial Testing (`break-ui`):** Stress-tested Kanban columns with zero tasks (displaying clean dashed placeholder cards) and 200-word task descriptions without card deformation.
+- **Kanban Drag-and-Drop (Week 4):** `@dnd-kit/core` with pointer (6px activation distance, so the card's dropdown stays clickable) and keyboard sensors. The lifted card renders in a `DragOverlay` at `scale(1.03)` with `shadow-xl`; only `transform` and `opacity` animate.
+- **Conflict Banner (Week 4):** on a 409 the card snaps back and a non-modal `role="alert"` banner offers **Load Latest Changes**. The rest of the board stays usable.
+- **Buttons:** global `scale(0.97)` press feedback; async buttons show an inline `Loader2` spinner with a fixed `min-width` so they do not jump; disabled buttons use `cursor-not-allowed opacity-50`.
+- **Numbers and dates:** counts, deadlines, due dates and timestamps use `tabular-nums`; counts go through `pluralize` ("1 opportunity", "0 teams").
+- **Toasts:** `sonner` for bookmarks, new tasks, milestones and decisions, and the preview teammate edit; never `alert()`.
+- **Adversarial Testing (`break-ui`):** empty columns show dotted placeholders; 110-character card titles clamp to 3 lines with the full title in `title`; long Unicode names ("Aleksandra Wiśniewska-Kowalczyk") and two-letter names ("Jo") render clean initials on non-shrinking avatars.
+- **Pomodoro Timer (Week 5, planned):** digits will use `tabular-nums` to avoid jitter.
 
 ---
 
@@ -232,8 +264,13 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 | **Contract / Validation** | `StudyRequestValidationTest` (3), `StudyCircleSpecificationsTest` (1) | Session / resource DTOs, directory search | PASS | Duration bounds and default; future start; derived `endsAt`; http(s) links; LIKE escaping |
 | **Automated CI (Week 3)** | `ci.yml` run [45450163646](https://github.com/KUETcord/KUETcord/actions/runs/45450163646) | Backend, frontend, Docker, PR title | PASS | Backend: `Tests run: 188, Failures: 0, Errors: 0, Skipped: 0` on PostgreSQL 16 + Java 21 |
 | **Performance & Load** | `k6_kanban_read.js` | `GET /api/v1/playgrounds/{id}/tasks` | Planned (Week 5) | p95: 32ms at 40 VUs; zero N+1 queries |
-| **Interaction & Drag** | `KanbanDragDropTest` | `<PlaygroundKanbanBoard />` | Planned (Week 4) | Card dragged between columns updates state |
-| **Adversarial UI (`break-ui`)**| `KanbanTaskBreakUiTest` | `<TaskCard />` | Planned (Week 4) | 200-word task description cleanly clamps |
+| **Unit (Vitest)** | `kanban.test.ts` (6) | `moveCard`, `replaceCard`, `addCard`, `deadlineBadge` | PASS | End-of-column move without mutating the rollback snapshot; same-column no-op; rollback and commit; closed / today / urgent / soon / far badges; malformed date safe |
+| **Contract (Vitest)** | `demoCollabSource.test.ts` (6) | Demo `CollabSource` | PASS | DeadlineFirst and Recent ranking; version bump and 409 on stale version; teammate edit forces 409; VIEWER 403; start-playground links contest and makes caller LEAD; idempotent bookmarks |
+| **Interaction & Concurrency UI** | `KanbanBoard.test.tsx` (5) | `<KanbanBoard />` | PASS | 5 ordered columns and placeholders; **optimistic move before the server answers, with `expectedVersion`**; **409 rolls the card back, shows the banner, "Load Latest Changes" reloads**; VIEWER read-only; VIEWERs not offered as assignees |
+| **Integration UI** | `OpportunitiesPage.test.tsx` (4), `OpportunityDetailPage.test.tsx` (4) | `/opportunities`, `/opportunities/:id` | PASS | Ranked cards and badges; strategy toggle reorders; category / search filters and empty state; optimistic bookmark + Bookmarked filter; source link `noopener`; "Start Project Playground" opens the new linked board; closed contest disables it; unknown id handled |
+| **Integration UI** | `PlaygroundWorkspacePage.test.tsx` (4) | `/playgrounds/:id` | PASS | Preview teammate edit, then the user's move conflicts, then reload shows the teammate's change; milestone timeline order, overdue badge, "Mark reached"; decision accordion expand and new entry; Teacher preview is a read-only VIEWER |
+| **Adversarial UI (`break-ui`)** | `Collab.break-ui.test.tsx` (3) | `<KanbanBoard />`, `<Avatar />` | PASS | 110-char title clamped with full `title`; Unicode name initials; "Jo"; dotted empty column; exact pluralization |
+| **Frontend full suite** | `npm run typecheck && npm test && npm run build` | Whole frontend | PASS | `Test Files 17 passed (17)`, `Tests 69 passed (69)`; production build succeeds |
 | **Automated CI** | `ci.yml` run [44691405642](https://github.com/KUETcord/KUETcord/actions/runs/44691405642) | Backend, frontend, Docker, PR title | PASS | Backend: `Tests run: 75, Failures: 0, Errors: 0, Skipped: 0` on PostgreSQL 16 + Java 21 |
 | **CI/CD Smoke Testing** | `deploy.yml` Actuator Health| `/actuator/health` | Planned (Week 6) | Returns `{"status":"UP"}` with database connected |
 
@@ -264,6 +301,6 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 2. **Step 2:** Open a hackathon listing, click `"Bookmark"` $\rightarrow$ observe toast confirmation.
 3. **Step 3:** Click `"Create Playground from Contest"` $\rightarrow$ show seamless creation of a new team workspace linked to the hackathon.
 4. **Step 4:** Navigate to the Kanban board, create a new task `"Implement WebSockets"`, assign a teammate $\rightarrow$ observe assignee avatar.
-5. **Step 5 (Concurrency Demo):** Open two browser tabs on the same Kanban board. In Tab 1, move the task to `DONE`. In Tab 2, attempt moving the task to `REVIEW` with an older version $\rightarrow$ show HTTP 409 conflict banner prompting reload.
+5. **Step 5 (Concurrency Demo):** Open two browser tabs on the same Kanban board. In Tab 1, move the task to `DONE`. In Tab 2, attempt moving the task to `REVIEW` with an older version $\rightarrow$ show HTTP 409 conflict banner prompting reload. *(Without a backend: in preview mode click "Preview: simulate a teammate edit", then move that card.)*
 6. **Step 6:** Open Study Circles, schedule a 90-minute session, and start the Pomodoro countdown timer.
 
