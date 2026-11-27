@@ -206,6 +206,61 @@ flowchart LR
 
 **Not in Week 3 (by plan):** the frontend for all of this (Weeks 4-5) and linking circles and playgrounds to shared chat (`conversation_id`, Week 6).
 
+#### 2.3.2 Week 5 implementation (Study Hub UI, Pomodoro, Campus Pulse, load and query verification, done)
+
+**Revision checklist (backend):** the plan's "revision items checklist" had no table, so Week 5 adds one.
+
+| Method | Route | Access | Behaviour |
+|---|---|---|---|
+| `GET` / `POST` | `/api/v1/study-circles/{id}/revision-items` | Circle member | Oldest first, with author and ticker names in one query; `title` up to 200 characters. |
+| `PATCH` | `/api/v1/study-circles/{id}/revision-items/{itemId}` | Circle member | `{"done": true}` ticks, `false` unticks. Ticking again keeps the first `completedBy` / `completedAt`. An item from another circle is `404` (no cross-circle edits). |
+
+- Migration `V15__study_circle_revision_checklist.sql` (Member C owns V3, V6, V9, V12, V15): `study_revision_items`, with `CHECK (done = (completed_at IS NOT NULL))`, a non-blank title check, and `idx_revision_items_circle_created`.
+
+**Screens:**
+
+| Route | What it shows |
+|---|---|
+| `/study-circles` | Calendar cards for the next session of each circle you belong to; search; All / My circles toggle; Join and Create. Honours Member A's CT card link `?courseId=&courseCode=` with a "Show all courses" reset. |
+| `/study-circles/:id` | Members; upcoming sessions and a scheduling form (local `datetime-local` sent as UTC); the revision checklist with a progress bar; shared resources; a sticky Pomodoro. Outsiders see the circle and its members plus a Join prompt, mirroring the server's members-only `403`. |
+| `/campus-pulse` | Newest-first notices with Club / Seminar / Department / Career chips (`ACADEMIC` is shown as "Department"), "Read more" for long notices, paging, and a composer shown only to Teachers, moderators and admins. |
+
+- **Data layer:** a `StudySource` interface with a Spring implementation and a preview store that enforces the server rules: members-only `403`, idempotent join, future sessions of 15-480 minutes, http(s) links only, staff-only publishing. Demo circles reuse the CT Hub demo course ids, so the CT card link lands on a real circle.
+- **Revision checklist UI:** ticking is optimistic; a refused tick rolls back the box and the count.
+- **Pomodoro** (`lib/study/pomodoro.ts`): a pure state machine.
+  - Cycle: 25-minute focus, 5-minute break, and a 15-minute break after every fourth completed focus block. Skipping a focus block does not count it.
+  - Time is a wall-clock deadline (`endsAt`), not a tick count, so a throttled background tab never drifts.
+
+**Load test (Day 4):** `tests/load/k6_kanban_tasks.js` replaces the placeholder script. The `load-kanban.yml` workflow runs it against the packaged backend and PostgreSQL 16 on GitHub Actions.
+- Setup creates a board through the API: 40 cards, one per VU, plus one shared "hot" card.
+- 40 VUs then read the board (80% of iterations) or move a card with `expectedVersion` (20%). About a tenth of the moves go to the hot card, so stale writes really happen.
+
+Results from run [46066176451](https://github.com/KUETcord/KUETcord/actions/runs/46066176451):
+
+| Metric | Result | Threshold |
+|---|---|---|
+| Board read p95 / median | **5.83 ms** / 2.40 ms | p95 < 100 ms |
+| Card move p95 | **8.44 ms** | p95 < 200 ms |
+| Requests | 4,318 (56.7/s), 3,558 iterations | |
+| Failed requests | 0.00% | < 1% |
+| Server errors (5xx) | 0 | 0 |
+| Stale moves answered with a clean `409` | 1 (716 of 717 moves succeeded) | `409`, never `5xx` |
+| Checks | 7,116 of 7,116 | > 99% |
+
+**Query performance (Day 5):** `CollaborationQueryPlanIT` seeds 100 playgrounds x 60 cards and 6,000 opportunities, runs `ANALYZE`, then `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`. Sequential scans stay enabled, so these are the planner's real choices. CI run [46066176314](https://github.com/KUETcord/KUETcord/actions/runs/46066176314):
+
+| Query (as the repositories issue it) | Index used | Execution |
+|---|---|---|
+| Kanban board cards with assignee names | `idx_tasks_playground_status` + `users_pkey` | 0.162 ms |
+| Card count per column | `idx_tasks_playground_status` | 0.059 ms |
+| End-of-column position for a move | `idx_tasks_playground_status` | 0.034 ms |
+| Contests closing within 3 days | `idx_opp_deadline` | 0.110 ms |
+| Verified hackathons, nearest deadline | `idx_opp_cat_status_deadline` | 0.100 ms |
+| Ranking candidate window (newest 200) | `idx_opp_created_at` | 0.249 ms |
+
+- The plan names `idx_opportunities_deadline`; the schema's indexes are `idx_opp_deadline` and `idx_opp_cat_status_deadline`, and both are verified above.
+- **Zero N+1:** Hibernate statistics count JDBC statements for `GET /playgrounds/{id}/tasks`: **3 for a 5-card board and 3 for a 60-card board**. The cost is fixed whatever the board size, because the cards and their assignees come from one projection query.
+
 ---
 
 ## 3. Sprint-by-Sprint Development Log
@@ -216,7 +271,7 @@ flowchart LR
 | **Week 2** | Nov 17 – Nov 23 | ✅ `V9` playground/Kanban hardening migration; `Playground`, `PlaygroundMember`, `ProjectTask`, `ProjectMilestone`, `ProjectDecision` entities; `LEAD` / `CONTRIBUTOR` / `VIEWER` access policy (private playgrounds hidden with 404, archived playgrounds frozen); playground create / list / detail / PATCH / invite APIs; Kanban board + task CRUD with `@Version` optimistic locking mapped to 409; milestones and decision log endpoints; N+1-free projections; 38 new tests | [PR #8](https://github.com/KUETcord/KUETcord/pull/8) (`feature/playgrounds-kanban-board`) |
 | **Week 3** | Nov 24 – Nov 30 | ✅ `V12` migration; Study Circles (directory with course filter, join, members-only sessions and resources); UTC session scheduler with overlap guard; Campus Pulse feed with staff-only publishing; transactional outbox events `TASK_ASSIGNED`, `MILESTONE_REACHED`, `STUDY_SESSION_SCHEDULED`; milestone completion (exactly-once under races); opportunity -> playground team formation; 32 new tests | [PR #12](https://github.com/KUETcord/KUETcord/pull/12) (`feature/study-circles-pulse-outbox`) |
 | **Week 4** | Dec 01 – Dec 07 | ✅ Contest Board UI (deadline badges, category chips, search, strategy toggle, optimistic bookmarks); opportunity detail with official source and "Start Project Playground"; playground list and workspace; drag-and-drop + dropdown Kanban with optimistic moves, rollback and the 409 "Load Latest Changes" banner; milestone timeline and decision-log accordion; demo data source that enforces the server rules; 32 new frontend tests | [PR #15](https://github.com/KUETcord/KUETcord/pull/15) (`feature/contest-board-kanban-ui`) |
-| **Week 5** | Dec 08 – Dec 14 | Study Circle Hub, Pomodoro widget, k6 load testing on task updates, N+1 query elimination | PR #30, PR #33 |
+| **Week 5** | Dec 08 – Dec 14 | ✅ `V15` revision checklist API; Study Circles hub (upcoming-session calendar cards, join, create, CT Hub course deep link); circle page with sessions, optimistic checklist, vetted resources and a drift-free Pomodoro; Campus Pulse feed with category chips and staff composer; 40-VU k6 Kanban load test in CI (board p95 5.83 ms, 0 errors); `EXPLAIN ANALYZE` index verification and N+1 statement count; 9 new backend and 21 new frontend tests | [PR #17](https://github.com/KUETcord/KUETcord/pull/17) (`feature/study-hub-pomodoro-load-test`) |
 | **Week 6** | Dec 15 – Dec 21 | Link Playground/Study chat to Member B's engine, presentation rehearsal, demo polish | PR #37 |
 
 ---
@@ -230,7 +285,13 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 - **Numbers and dates:** counts, deadlines, due dates and timestamps use `tabular-nums`; counts go through `pluralize` ("1 opportunity", "0 teams").
 - **Toasts:** `sonner` for bookmarks, new tasks, milestones and decisions, and the preview teammate edit; never `alert()`.
 - **Adversarial Testing (`break-ui`):** empty columns show dotted placeholders; 110-character card titles clamp to 3 lines with the full title in `title`; long Unicode names ("Aleksandra Wiśniewska-Kowalczyk") and two-letter names ("Jo") render clean initials on non-shrinking avatars.
-- **Pomodoro Timer (Week 5, planned):** digits will use `tabular-nums` to avoid jitter.
+- **Pomodoro Timer (Week 5):** the `role="timer"` clock uses `tabular-nums` so digits never jitter. The progress ring animates only `stroke-dashoffset`, and phase changes are announced through an `aria-live="polite"` region. Every control is a labelled button ("Reset timer", "Skip to break").
+- **Study Hub craft (Week 5):**
+  - Session dates are calendar tiles in tabular figures.
+  - The checklist progress bar is a `role="progressbar"` scaled with `transform` only.
+  - Long notices clamp to three lines with an `aria-expanded` "Read more".
+  - Long locations and organizations truncate.
+  - External links open with `rel="noopener noreferrer"`.
 
 ---
 
@@ -263,16 +324,25 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 | **Security / RBAC** | `AnnouncementControllerIntegrationTest` (4) | `/api/v1/announcements/**` | PASS | Teacher and moderator publish, student 403; newest first; category and case-insensitive organization filters; paging; 400/404; V12 `CHECK` |
 | **Contract / Validation** | `StudyRequestValidationTest` (3), `StudyCircleSpecificationsTest` (1) | Session / resource DTOs, directory search | PASS | Duration bounds and default; future start; derived `endsAt`; http(s) links; LIKE escaping |
 | **Automated CI (Week 3)** | `ci.yml` run [45450163646](https://github.com/KUETcord/KUETcord/actions/runs/45450163646) | Backend, frontend, Docker, PR title | PASS | Backend: `Tests run: 188, Failures: 0, Errors: 0, Skipped: 0` on PostgreSQL 16 + Java 21 |
-| **Performance & Load** | `k6_kanban_read.js` | `GET /api/v1/playgrounds/{id}/tasks` | Planned (Week 5) | p95: 32ms at 40 VUs; zero N+1 queries |
 | **Unit (Vitest)** | `kanban.test.ts` (6) | `moveCard`, `replaceCard`, `addCard`, `deadlineBadge` | PASS | End-of-column move without mutating the rollback snapshot; same-column no-op; rollback and commit; closed / today / urgent / soon / far badges; malformed date safe |
 | **Contract (Vitest)** | `demoCollabSource.test.ts` (6) | Demo `CollabSource` | PASS | DeadlineFirst and Recent ranking; version bump and 409 on stale version; teammate edit forces 409; VIEWER 403; start-playground links contest and makes caller LEAD; idempotent bookmarks |
 | **Interaction & Concurrency UI** | `KanbanBoard.test.tsx` (5) | `<KanbanBoard />` | PASS | 5 ordered columns and placeholders; **optimistic move before the server answers, with `expectedVersion`**; **409 rolls the card back, shows the banner, "Load Latest Changes" reloads**; VIEWER read-only; VIEWERs not offered as assignees |
 | **Integration UI** | `OpportunitiesPage.test.tsx` (4), `OpportunityDetailPage.test.tsx` (4) | `/opportunities`, `/opportunities/:id` | PASS | Ranked cards and badges; strategy toggle reorders; category / search filters and empty state; optimistic bookmark + Bookmarked filter; source link `noopener`; "Start Project Playground" opens the new linked board; closed contest disables it; unknown id handled |
 | **Integration UI** | `PlaygroundWorkspacePage.test.tsx` (4) | `/playgrounds/:id` | PASS | Preview teammate edit, then the user's move conflicts, then reload shows the teammate's change; milestone timeline order, overdue badge, "Mark reached"; decision accordion expand and new entry; Teacher preview is a read-only VIEWER |
 | **Adversarial UI (`break-ui`)** | `Collab.break-ui.test.tsx` (3) | `<KanbanBoard />`, `<Avatar />` | PASS | 110-char title clamped with full `title`; Unicode name initials; "Jo"; dotted empty column; exact pluralization |
-| **Frontend full suite** | `npm run typecheck && npm test && npm run build` | Whole frontend | PASS | `Test Files 17 passed (17)`, `Tests 69 passed (69)`; production build succeeds |
+| **Frontend full suite** | `npm run typecheck && npm test && npm run build` | Whole frontend | PASS | Week 4: `Test Files 17 passed (17)`, `Tests 69 passed (69)`. Week 5: `Test Files 23 passed (23)`, `Tests 90 passed (90)`; production build succeeds |
 | **Automated CI (Week 4)** | `ci.yml` run [46012036032](https://github.com/KUETcord/KUETcord/actions/runs/46012036032) | Backend, frontend, Docker, PR title | PASS | Frontend job: typecheck, `Test Files 17 passed (17)`, production build; backend suite unchanged and green |
 | **Automated CI** | `ci.yml` run [44691405642](https://github.com/KUETcord/KUETcord/actions/runs/44691405642) | Backend, frontend, Docker, PR title | PASS | Backend: `Tests run: 75, Failures: 0, Errors: 0, Skipped: 0` on PostgreSQL 16 + Java 21 |
+| **Unit** | `RevisionItemTest` (2) | `RevisionItem.markDone` | PASS | First tick recorded, re-tick keeps it; untick clears `completedBy` / `completedAt` |
+| **Integration / Security** | `RevisionItemControllerIntegrationTest` (5) | `/api/v1/study-circles/{id}/revision-items/**` | PASS | Oldest first with author; tick / re-tick / untick; outsider 403 and cross-circle item 404; blank / 201-char / missing `done` 400; V15 `CHECK` enforced |
+| **Performance / Query plans** | `CollaborationQueryPlanIT` (3) | Kanban and opportunity hot queries | PASS | `EXPLAIN (ANALYZE, BUFFERS)` on 6,000 cards / 6,000 opportunities: `idx_tasks_playground_status`, `idx_opp_deadline`, `idx_opp_cat_status_deadline`, `idx_opp_created_at` all chosen, 0.03-0.25 ms |
+| **Performance / N+1** | `CollaborationQueryPlanIT.boardReadShouldIssueConstantStatementCount` | `GET /playgrounds/{id}/tasks` | PASS | `board statements: 5 cards -> 3, 60 cards -> 3` |
+| **Performance & Load** | `k6_kanban_tasks.js` (40 VUs) via `load-kanban.yml` run [46066176451](https://github.com/KUETcord/KUETcord/actions/runs/46066176451) | Board read + versioned `PATCH` moves | PASS | Board p95 **5.83 ms**, move p95 8.44 ms, 4,318 requests, 0.00% failed, 0 5xx, stale move answered with a clean 409 |
+| **Unit (Vitest)** | `pomodoro.test.ts` (5), `demoStudySource.test.ts` (4) | Pomodoro state machine, preview `StudySource` | PASS | Pause/resume keeps exact time; a late tick ends a block once (no drift); long break after the 4th block; skip not counted; `mm:ss` rounding. Members-only 403, idempotent join, first tick kept, session and link validation, staff-only publishing |
+| **Interaction / A11y** | `PomodoroTimer.test.tsx` (3) | `<PomodoroTimer />` | PASS | Fake timers: 25:00 -> 24:00 -> short break with polite announcement; pause freezes, reset restores; labelled, focusable controls; `tabular-nums` |
+| **Integration UI** | `StudyCircles.test.tsx` (4), `CampusPulsePage.test.tsx` (2) | `/study-circles`, `/study-circles/:id`, `/campus-pulse` | PASS | Upcoming calendar cards; Join adds the circle's session; `?courseId=` deep link and reset; optimistic tick moves progress to 50%; topics append; resource `noopener`; outsider Join reveals content. Category chips filter; students see no composer; a Teacher's post appears first |
+| **Adversarial UI (`break-ui`)** | `Study.break-ui.test.tsx` (3) | Pulse card, `<SessionCard />`, `<RevisionChecklist />` | PASS | 700-char notice clamps with "Read more"; 300-char location truncates; meeting link `noopener`; refused tick rolls back |
+| **Automated CI (Week 5)** | `ci.yml` run [46066176314](https://github.com/KUETcord/KUETcord/actions/runs/46066176314) | Backend, frontend, Docker, PR title | PASS | Backend: `Tests run: 219, Failures: 0, Errors: 0, Skipped: 0` plus 9 failsafe ITs on PostgreSQL 16 + Java 21; frontend `Test Files 23 passed (23)` |
 | **CI/CD Smoke Testing** | `deploy.yml` Actuator Health| `/actuator/health` | Planned (Week 6) | Returns `{"status":"UP"}` with database connected |
 
 ---
@@ -304,4 +374,9 @@ In accordance with [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md) and Emil Kowal
 4. **Step 4:** Navigate to the Kanban board, create a new task `"Implement WebSockets"`, assign a teammate $\rightarrow$ observe assignee avatar.
 5. **Step 5 (Concurrency Demo):** Open two browser tabs on the same Kanban board. In Tab 1, move the task to `DONE`. In Tab 2, attempt moving the task to `REVIEW` with an older version $\rightarrow$ show HTTP 409 conflict banner prompting reload. *(Without a backend: in preview mode click "Preview: simulate a teammate edit", then move that card.)*
 6. **Step 6:** Open Study Circles, schedule a 90-minute session, and start the Pomodoro countdown timer.
+   - The session's calendar card appears on the hub.
+   - Ticking a revision topic moves the progress bar at once.
+   - In preview mode, open "Design Patterns Case Drill" to show the Join prompt that guards members-only content.
+7. **Step 7:** Open Campus Pulse and filter by Department. Switch the preview role to Teacher to show the staff-only composer.
+8. **Step 8 (Performance):** open the `load-kanban.yml` run summary (board p95 5.83 ms at 40 VUs) and the `[query-plan]` lines in the CI backend log.
 
