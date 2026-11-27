@@ -11,13 +11,7 @@ import java.util.Set;
  * <p>
  * Translates CT Hub transactional outbox events emitted by {@code CtEventService} into
  * persisted inbox notifications (and post-commit STOMP pushes) via Member B's
- * {@link OutboxProcessor} {@code SKIP LOCKED} worker:
- * <ul>
- *   <li>{@code CT_APPROVAL_REQUESTED} → notifies the assigned KUET course teacher.</li>
- *   <li>{@code CT_VERIFIED} → notifies all course followers (excluding the approving actor).</li>
- *   <li>{@code CT_RESCHEDULED} / {@code CT_CANCELLED} → notifies all course followers and,
- *       when {@code notifyTeacher} is {@code true}, the assigned teacher (deduplicated, excluding actor).</li>
- * </ul>
+ * {@link OutboxProcessor} {@code SKIP LOCKED} worker.
  */
 @Component
 public class CtHubEventHandler implements OutboxEventHandler {
@@ -60,8 +54,13 @@ public class CtHubEventHandler implements OutboxEventHandler {
 
         String title = "CT approval requested: " + safeText(event.text("title"), "Upcoming CT");
         String submittedBy = event.text("submittedByName");
-        String preview = joinNonBlank(
+        String examRoom = event.text("examRoom");
+        String head = joinNonBlank(
                 event.text("courseCode"),
+                examRoom == null || examRoom.isBlank() ? null : "Room " + examRoom
+        );
+        String preview = joinNonBlank(
+                head,
                 submittedBy == null || submittedBy.isBlank() ? null : "Proposed by " + submittedBy
         );
 
@@ -94,7 +93,12 @@ public class CtHubEventHandler implements OutboxEventHandler {
         }
 
         String title = titlePrefix + safeText(event.text("title"), "CT Update");
-        String preview = joinNonBlank(event.text("courseCode"), event.text("reason"));
+        String examRoom = event.text("examRoom");
+        String head = joinNonBlank(
+                event.text("courseCode"),
+                examRoom == null || examRoom.isBlank() ? null : "Room " + examRoom
+        );
+        String preview = joinNonBlank(head, event.text("reason"));
 
         return recipients.stream()
                 .map(recipientId -> new NotificationDraft(

@@ -42,9 +42,15 @@ public class CtEventController {
     public ResponseEntity<ApiResponse<List<CtEventSummaryDto>>> listEvents(
             @RequestParam(required = false) Long courseId,
             @RequestParam(required = false) CtStatus status,
+            @RequestParam(required = false) String department,
+            @RequestParam(required = false) String yearTerm,
+            @RequestParam(required = false) String batch,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
-        return ResponseEntity.ok(ApiResponse.ok(ctEventService.listEvents(courseId, status, from, to)));
+        List<CtEventSummaryDto> events = (department == null && yearTerm == null && batch == null)
+                ? ctEventService.listEvents(courseId, status, from, to)
+                : ctEventService.listEvents(courseId, status, department, yearTerm, batch, from, to);
+        return ResponseEntity.ok(ApiResponse.ok(events));
     }
 
     @PostMapping

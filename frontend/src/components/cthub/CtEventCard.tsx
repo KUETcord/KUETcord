@@ -9,6 +9,7 @@ import {
   Clock,
   GraduationCap,
   Loader2,
+  MapPin,
   RefreshCw,
   UserCheck,
   XCircle,
@@ -74,6 +75,11 @@ export function CtEventCard({
             <span className="rounded-md bg-slate-800 px-2 py-0.5 font-mono text-xs font-semibold tracking-tight text-emerald-300">
               {event.courseCode}
             </span>
+            {event.courseYearTerm && (
+              <span className="rounded-md border border-slate-800 bg-slate-950/60 px-2 py-0.5 font-mono text-[11px] text-sky-300 tabular-nums">
+                {event.courseYearTerm}
+              </span>
+            )}
             <CtStatusBadge status={event.status} />
             <span
               className="rounded-md border border-slate-800 bg-slate-950/60 px-2 py-0.5 font-mono text-[11px] text-slate-400 tabular-nums"
@@ -102,6 +108,15 @@ export function CtEventCard({
               <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{event.durationMinutes} min</span>
             </span>
+            {event.examRoom && (
+              <span
+                className="inline-flex min-w-0 items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-amber-200"
+                title={`Exam room: ${event.examRoom}`}
+              >
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden="true" />
+                <span className="truncate max-w-[24ch]">{event.examRoom}</span>
+              </span>
+            )}
             {event.assignedTeacherName && (
               <span
                 className="inline-flex min-w-0 items-center gap-1.5 text-sky-300/90"
@@ -121,7 +136,7 @@ export function CtEventCard({
                 type="button"
                 disabled={isVerifying}
                 onClick={() => onVerify(event)}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-[background-color,transform] duration-100 ease-out hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isVerifying ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" aria-hidden="true" />
@@ -131,12 +146,13 @@ export function CtEventCard({
                 <span>Approve</span>
               </button>
             )}
+
             {canMutateThisEvent && (
               <>
                 <button
                   type="button"
                   onClick={() => onOpenReschedule(event)}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors duration-150 ease-out hover:bg-slate-700"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-200 transition-[background-color,transform] duration-100 ease-out hover:bg-slate-700 active:scale-[0.97]"
                 >
                   <RefreshCw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   <span>Reschedule</span>
@@ -144,7 +160,7 @@ export function CtEventCard({
                 <button
                   type="button"
                   onClick={() => onOpenCancel(event)}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:bg-rose-500/20"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition-[background-color,transform] duration-100 ease-out hover:bg-rose-500/20 active:scale-[0.97]"
                 >
                   <XCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   <span>Cancel</span>

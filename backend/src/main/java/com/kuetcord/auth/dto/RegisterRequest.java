@@ -23,7 +23,19 @@ public record RegisterRequest(
         String department,
 
         @Size(max = 20, message = "Batch must not exceed 20 characters")
-        String batch
-) {
-}
+        String batch,
 
+        @Size(max = 10, message = "Year-Term must not exceed 10 characters")
+        String yearTerm,
+
+        @Size(max = 20, message = "Roll number must not exceed 20 characters")
+        String rollNumber,
+
+        @Size(max = 280, message = "Bio must not exceed 280 characters")
+        String bio
+) {
+    /** Backward-compatible constructor for existing test suites. */
+    public RegisterRequest(String email, String password, String displayName, String department, String batch) {
+        this(email, password, displayName, department, batch, null, null, null);
+    }
+}

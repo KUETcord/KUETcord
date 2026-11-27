@@ -18,9 +18,30 @@ public record UserSummaryDto(
         Set<String> roles,
         String department,
         String batch,
+        String yearTerm,
+        String rollNumber,
+        String bio,
+        String avatarUrl,
+        boolean hasLocalPassword,
         boolean emailVerified,
         UserStatus status
 ) {
+    /** Backward-compatible constructor for existing unit tests. */
+    public UserSummaryDto(
+            Long id,
+            String email,
+            String displayName,
+            String username,
+            String globalRole,
+            Set<String> roles,
+            String department,
+            String batch,
+            boolean emailVerified,
+            UserStatus status) {
+        this(id, email, displayName, username, globalRole, roles, department, batch,
+                null, null, null, null, true, emailVerified, status);
+    }
+
     public static UserSummaryDto from(User user) {
         Set<String> roleNames = user.getRoles().stream()
                 .map(Role::getName)
@@ -42,6 +63,11 @@ public record UserSummaryDto(
                 roleNames,
                 user.getDepartment(),
                 user.getBatch(),
+                user.getYearTerm(),
+                user.getRollNumber(),
+                user.getBio(),
+                user.getAvatarUrl(),
+                user.getPasswordHash() != null && !user.getPasswordHash().isBlank(),
                 user.isEmailVerified(),
                 user.getStatus()
         );

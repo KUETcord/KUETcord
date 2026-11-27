@@ -8,10 +8,12 @@ import com.kuetcord.auth.dto.UserSummaryDto;
 import com.kuetcord.auth.dto.VerifyEmailRequest;
 import com.kuetcord.auth.model.AuthProvider;
 import com.kuetcord.auth.model.Role;
+import com.kuetcord.auth.model.RoleName;
 import com.kuetcord.auth.model.User;
 import com.kuetcord.auth.model.UserStatus;
 import com.kuetcord.auth.repository.UserRepository;
 import com.kuetcord.auth.validator.EmailDomainValidator;
+import com.kuetcord.common.academic.YearTerm;
 import com.kuetcord.common.exception.BadRequestException;
 import com.kuetcord.common.exception.ConflictException;
 import com.kuetcord.common.exception.ForbiddenException;
@@ -43,24 +45,33 @@ public class AuthService {
     public UserSummaryDto register(RegisterRequest request) {
         String normalizedEmail = request.email().trim().toLowerCase(Locale.ROOT);
         if (!emailDomainValidator.isValid(normalizedEmail)) {
-            throw new BadRequestException("Only KUET institutional student emails (@stud.kuet.ac.bd) are allowed");
+            throw new BadRequestException(
+                    "Only KUET institutional student (@stud.kuet.ac.bd) or faculty (@kuet.ac.bd / @<dept>.kuet.ac.bd) emails are allowed");
         }
 
         if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
             throw new ConflictException("An account with this KUET email already exists");
         }
 
-        Role initialRole = accountProvisioner.requireRole(
-                emailDomainValidator.isFacultyEmail(normalizedEmail)
-                        ? com.kuetcord.auth.model.RoleName.ROLE_TEACHER
-                        : com.kuetcord.auth.model.RoleName.ROLE_STUDENT);
+        boolean isFaculty = emailDomainValidator.isFacultyEmail(normalizedEmail);
+        Role initialRole = accountProvisioner.requireRole(isFaculty ? RoleName.ROLE_TEACHER : RoleName.ROLE_STUDENT);
+
+        String normalizedDept = trimNullable(request.department());
+        if (normalizedDept != null) {
+            normalizedDept = normalizedDept.toUpperCase(Locale.ROOT);
+        }
+        String normalizedYearTerm = isFaculty ? null : YearTerm.normalizeNullable(request.yearTerm());
+
         User newUser = User.builder()
                 .email(normalizedEmail)
                 .displayName(request.displayName().trim())
                 .username(accountProvisioner.deriveUniqueUsername(normalizedEmail))
                 .passwordHash(passwordService.hash(request.password()))
-                .department(trimNullable(request.department()))
-                .batch(trimNullable(request.batch()))
+                .department(normalizedDept)
+                .batch(isFaculty ? "Faculty" : trimNullable(request.batch()))
+                .yearTerm(normalizedYearTerm)
+                .rollNumber(isFaculty ? null : trimNullable(request.rollNumber()))
+                .bio(trimNullable(request.bio()))
                 .status(UserStatus.ACTIVE)
                 .roles(new HashSet<>(Set.of(initialRole)))
                 .build();
@@ -116,7 +127,10 @@ public class AuthService {
     }
 
     private static String trimNullable(String value) {
-        return value == null ? null : value.trim();
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
-

@@ -608,3 +608,31 @@ npm run test -- AppShell.test.tsx CtCard.test.tsx
   2. How JPA `@Version` prevents lost updates at the SQL level (`UPDATE ... WHERE version = :oldVersion`).
   3. Why the State Pattern was preferred over boolean flags for the CT lifecycle.
 
+
+---
+
+## 11. Phase 7 Expansion — My Account, Admin/Mod CRUD, Role-Friendly Auth, Year–Term (`1-1`..`4-2`) & CT Exam Room
+
+> **Branch:** `feature/account-admin-and-ct-room` (targeting **`develop`** — never push directly to `main` or `develop`)  
+> **Flyway Migration:** `V16__account_admin_year_term_and_ct_room.sql`
+
+### 11.1 Scope Owned by Member A
+1. **Shared Canonical `YearTerm` Contract (`1-1`..`4-2`):**
+   - Values: `'1-1'` (`1st Year, 1st Term`) through `'4-2'` (`4th Year, 2nd Term`).
+   - Added to `users.year_term`, `course_offerings.year_term` (backfilled from `semester` with composite index `idx_courses_dept_year_term`), and exposed in `UserSummaryDto` & `CourseOfferingDto` for Members B & C.
+2. **My Account Page (`/account` — `AccountPage.tsx` & `/api/v1/me`):**
+   - `PATCH /api/v1/me`: edit `displayName`, `username`, `department`, `batch`, `yearTerm`, `rollNumber`, `bio`, and `avatarUrl`.
+   - **`$0.00` Free-Tier Profile Picture:** Client-side HTML5 `<canvas>` `128x128` WebP compression (`<= 24 KB` Data URI or `https://` URL, validated by `@ValidAvatar`, rejecting `svg+xml`/`javascript:`). Survives Render container restarts with zero paid S3/Cloudinary storage.
+   - `POST /api/v1/me/password`: verify `currentPassword` (unless OAuth-only account setting initial password) and update BCrypt (cost 12) `password_hash`.
+3. **Role-Friendly Institutional Auth (`/auth` — `AuthPage.tsx`):**
+   - Welcoming copy and live role-detection badge for **Students (`@stud.kuet.ac.bd`)**, **Teachers (`@<dept>.kuet.ac.bd` / `@kuet.ac.bd`)**, **CRs**, **Moderators**, and **Admins**.
+   - Adaptive registration fields (`Year–Term`, `Batch`, `Roll No.` for students; `Department` & `Designation/Bio` for faculty), plus password show/hide toggle.
+4. **Admin & Moderator Governance Console (`/admin` — `AdminConsolePage.tsx` & `/api/v1/admin/**`):**
+   - Guarded by `@PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")` (only `ROLE_ADMIN` can grant/revoke `ROLE_ADMIN`).
+   - **Courses Full CRUD:** `GET`, `POST`, `PUT /{id}`, `DELETE /{id}` under `/api/v1/admin/courses` with automatic `CourseCatalogCacheService.evictAll()`.
+   - **Direct Teacher Provisioning & User Full CRUD:** `POST /api/v1/admin/users/teachers` (creates pre-verified `ACTIVE` `ROLE_TEACHER` accounts immediately without waiting for email verification), plus `GET`, `POST`, `PUT /{id}` (roles, status, yearTerm, password reset), and `DELETE /{id}` under `/api/v1/admin/users`.
+5. **CT Hub Upgrades (`/ct-hub`):**
+   - Add `exam_room VARCHAR(100)` and `target_batch VARCHAR(20)` on `ct_events`; expose in `CreateCtEventRequest`, `RescheduleCtEventRequest`, `CtEventCard.tsx` (`MapPin` badge), and `CtHubEventHandler` notification previews.
+   - Default **"My Batch (`e.g. 3-1 · CSE`)"** filter **active by default** for students with `yearTerm` set (1-click toggle to `"All Terms"`), plus explicit `Year–Term` selector when CRs/Teachers/Mods/Admins propose CTs.
+6. **`<AppShell />` Navigation Slots Ready for Members B & C:**
+   - Expose sidebar entries & placeholder/ready route wiring for `/account`, `/admin` (Mod/Admin only), `/assignments` (Member B), `/presentations` (Member B), and `/course-projects` (Member C).

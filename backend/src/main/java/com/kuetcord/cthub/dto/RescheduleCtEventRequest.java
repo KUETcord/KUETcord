@@ -15,6 +15,13 @@ public record RescheduleCtEventRequest(
         String reason,
 
         @NotNull(message = "Expected version is required for optimistic locking")
-        Long expectedVersion
+        Long expectedVersion,
+
+        @Size(max = 100, message = "Exam room must not exceed 100 characters")
+        String examRoom
 ) {
+    /** Backward-compatible constructor for existing test suites. */
+    public RescheduleCtEventRequest(Instant newScheduledAt, String reason, Long expectedVersion) {
+        this(newScheduledAt, reason, expectedVersion, null);
+    }
 }

@@ -8,4 +8,7 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
 
     boolean existsByCourseCodeIgnoreCaseAndSemesterIgnoreCaseAndAcademicYearIgnoreCase(
             String courseCode, String semester, String academicYear);
+
+    boolean existsByCourseCodeIgnoreCaseAndSemesterIgnoreCaseAndAcademicYearIgnoreCaseAndIdNot(
+            String courseCode, String semester, String academicYear, Long id);
 }

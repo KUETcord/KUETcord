@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { AlertTriangle, Check, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, MapPin, RefreshCw, Search, X } from 'lucide-react';
 import { ctHubApi } from '../../lib/api';
 import { getInitials } from '../../lib/format';
+import { resolveYearTerm, YEAR_TERM_OPTIONS } from '../../lib/yearTerm';
 import type { CourseOffering, CtEventSummary, TeacherSummary } from '../../types/domain';
 
 function ModalFrame({
@@ -50,6 +51,7 @@ interface ProposeCtModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courses: CourseOffering[];
+  defaultYearTerm?: string | null;
   demoTeachers: TeacherSummary[];
   isDemoMode: boolean;
   onSubmit: (payload: {
@@ -59,6 +61,7 @@ interface ProposeCtModalProps {
     title: string;
     scheduledAt: string;
     durationMinutes: number;
+    examRoom?: string;
     coveredTopics?: string;
   }) => Promise<void>;
 }
@@ -67,11 +70,15 @@ export function ProposeCtModal({
   open,
   onOpenChange,
   courses,
+  defaultYearTerm,
   demoTeachers,
   isDemoMode,
   onSubmit,
 }: ProposeCtModalProps) {
-  const [courseOfferingId, setCourseOfferingId] = useState<string>(courses[0] ? String(courses[0].id) : '');
+  const [postingYearTerm, setPostingYearTerm] = useState<string>(defaultYearTerm ?? '');
+  const [courseOfferingId, setCourseOfferingId] = useState<string>(
+    courses[0] ? String(courses[0].id) : '',
+  );
   const [teacherQuery, setTeacherQuery] = useState('');
   const [teacherResults, setTeacherResults] = useState<TeacherSummary[]>(demoTeachers);
   const [selectedTeacher, setSelectedTeacher] = useState<TeacherSummary | null>(null);
@@ -80,15 +87,28 @@ export function ProposeCtModal({
   const [title, setTitle] = useState('');
   const [scheduledLocal, setScheduledLocal] = useState('2026-12-01T10:00');
   const [durationMinutes, setDurationMinutes] = useState('45');
+  const [examRoom, setExamRoom] = useState('');
   const [coveredTopics, setCoveredTopics] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const selectableCourses = useMemo(() => {
+    if (!postingYearTerm) return courses;
+    const matches = courses.filter(
+      (c) => resolveYearTerm(c.yearTerm, c.semester) === postingYearTerm,
+    );
+    return matches.length > 0 ? matches : courses;
+  }, [courses, postingYearTerm]);
+
   useEffect(() => {
-    if (open && courses.length > 0 && !courseOfferingId) {
-      setCourseOfferingId(String(courses[0].id));
+    if (!open) return;
+    if (selectableCourses.length > 0) {
+      const stillPresent = selectableCourses.some((c) => String(c.id) === courseOfferingId);
+      if (!stillPresent) {
+        setCourseOfferingId(String(selectableCourses[0].id));
+      }
     }
-  }, [open, courses, courseOfferingId]);
+  }, [open, selectableCourses, courseOfferingId]);
 
   useEffect(() => {
     if (!open) return;
@@ -138,9 +158,11 @@ export function ProposeCtModal({
         title: title.trim(),
         scheduledAt: new Date(scheduledLocal).toISOString(),
         durationMinutes: Number(durationMinutes) || 45,
+        examRoom: examRoom.trim() || undefined,
         coveredTopics: coveredTopics.trim() || undefined,
       });
       setTitle('');
+      setExamRoom('');
       setCoveredTopics('');
       setTeacherQuery('');
       setSelectedTeacher(null);
@@ -157,7 +179,7 @@ export function ProposeCtModal({
       open={open}
       onOpenChange={onOpenChange}
       title="Propose Class Test Schedule"
-      description="Assign the course teacher so they are notified immediately to review and approve this CT."
+      description="Filter by Year–Term, assign the course teacher, and set the exam room so everyone receives accurate notifications."
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
@@ -166,23 +188,44 @@ export function ProposeCtModal({
           </div>
         )}
 
-        <div>
-          <label htmlFor="ct-course" className="block text-xs font-medium text-slate-300">
-            Course Offering
-          </label>
-          <select
-            id="ct-course"
-            value={courseOfferingId}
-            onChange={(e) => setCourseOfferingId(e.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-            required
-          >
-            {courses.map((course) => (
-              <option key={course.id} value={course.id}>
-                {course.courseCode} — {course.courseTitle}
-              </option>
-            ))}
-          </select>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+          <div className="sm:col-span-2">
+            <label htmlFor="ct-post-year-term" className="block text-xs font-medium text-slate-300">
+              Year &amp; Term Filter
+            </label>
+            <select
+              id="ct-post-year-term"
+              value={postingYearTerm}
+              onChange={(e) => setPostingYearTerm(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            >
+              <option value="">All Terms</option>
+              {YEAR_TERM_OPTIONS.map((yt) => (
+                <option key={yt.code} value={yt.code}>
+                  {yt.code} ({yt.label.split(' (')[0]})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-3">
+            <label htmlFor="ct-course" className="block text-xs font-medium text-slate-300">
+              Course Offering
+            </label>
+            <select
+              id="ct-course"
+              value={courseOfferingId}
+              onChange={(e) => setCourseOfferingId(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+              required
+            >
+              {selectableCourses.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.courseCode} ({resolveYearTerm(course.yearTerm, course.semester) ?? course.semester}) — {course.courseTitle}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Searchable Teacher Picker */}
@@ -286,10 +329,10 @@ export function ProposeCtModal({
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="sm:col-span-2">
             <label htmlFor="ct-date" className="block text-xs font-medium text-slate-300">
-              Scheduled Date & Time
+              Scheduled Date &amp; Time
             </label>
             <input
               id="ct-date"
@@ -302,7 +345,7 @@ export function ProposeCtModal({
           </div>
           <div>
             <label htmlFor="ct-duration" className="block text-xs font-medium text-slate-300">
-              Duration (minutes)
+              Duration (min)
             </label>
             <input
               id="ct-duration"
@@ -313,6 +356,24 @@ export function ProposeCtModal({
               onChange={(e) => setDurationMinutes(e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 tabular-nums focus:border-emerald-500 focus:outline-none"
               required
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="ct-room" className="block text-xs font-medium text-slate-300">
+            Exam Room (Optional)
+          </label>
+          <div className="relative mt-1.5">
+            <MapPin className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            <input
+              id="ct-room"
+              type="text"
+              maxLength={100}
+              value={examRoom}
+              onChange={(e) => setExamRoom(e.target.value)}
+              placeholder="e.g., CSE-302, Gallery-1, Lab-2"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
             />
           </div>
         </div>
@@ -343,7 +404,7 @@ export function ProposeCtModal({
           <button
             type="submit"
             disabled={submitting || !selectedTeacher}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white transition-[background-color,transform] duration-100 ease-out hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
             <span>Submit &amp; Notify Teacher</span>
@@ -361,7 +422,7 @@ interface RescheduleCtModalProps {
   onReloadLatest: () => Promise<void>;
   onSubmit: (
     event: CtEventSummary,
-    payload: { newScheduledAt: string; reason: string; expectedVersion: number },
+    payload: { newScheduledAt: string; reason: string; expectedVersion: number; examRoom?: string },
   ) => Promise<void>;
 }
 
@@ -373,6 +434,7 @@ export function RescheduleCtModal({
   onSubmit,
 }: RescheduleCtModalProps) {
   const [newScheduledLocal, setNewScheduledLocal] = useState('2026-12-03T10:30');
+  const [examRoom, setExamRoom] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -383,6 +445,7 @@ export function RescheduleCtModal({
       if (!Number.isNaN(iso.getTime())) {
         setNewScheduledLocal(iso.toISOString().slice(0, 16));
       }
+      setExamRoom(event.examRoom ?? '');
       setReason('');
     }
   }, [event]);
@@ -396,6 +459,7 @@ export function RescheduleCtModal({
         newScheduledAt: new Date(newScheduledLocal).toISOString(),
         reason: reason.trim(),
         expectedVersion: event.version,
+        examRoom: examRoom.trim(),
       });
     } finally {
       setSubmitting(false);
@@ -447,7 +511,7 @@ export function RescheduleCtModal({
 
           <div>
             <label htmlFor="reschedule-date" className="block text-xs font-medium text-slate-300">
-              New Scheduled Date & Time
+              New Scheduled Date &amp; Time
             </label>
             <input
               id="reschedule-date"
@@ -456,6 +520,21 @@ export function RescheduleCtModal({
               onChange={(e) => setNewScheduledLocal(e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 tabular-nums focus:border-emerald-500 focus:outline-none"
               required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="reschedule-room" className="block text-xs font-medium text-slate-300">
+              Exam Room (Optional)
+            </label>
+            <input
+              id="reschedule-room"
+              type="text"
+              maxLength={100}
+              value={examRoom}
+              onChange={(e) => setExamRoom(e.target.value)}
+              placeholder="e.g., CSE-302 or Gallery-2"
+              className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
             />
           </div>
 
@@ -486,7 +565,7 @@ export function RescheduleCtModal({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-xs font-medium text-white transition-[background-color,transform] duration-100 ease-out hover:bg-purple-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
               <span>Confirm Reschedule</span>
@@ -562,7 +641,7 @@ export function CancelCtModal({ event, onOpenChange, onSubmit }: CancelCtModalPr
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-medium text-white transition-[background-color,transform] duration-100 ease-out hover:bg-rose-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
               <span>Cancel CT</span>

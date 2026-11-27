@@ -3,6 +3,7 @@ package com.kuetcord.cthub.service;
 import com.kuetcord.auth.model.RoleName;
 import com.kuetcord.auth.model.User;
 import com.kuetcord.auth.repository.UserRepository;
+import com.kuetcord.common.academic.YearTerm;
 import com.kuetcord.common.concurrency.RequestCoalescer;
 import com.kuetcord.common.exception.BadRequestException;
 import com.kuetcord.common.exception.ForbiddenException;
@@ -38,6 +39,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -63,6 +65,22 @@ public class CtEventService {
 
     @Transactional(readOnly = true)
     public List<CtEventSummaryDto> listEvents(Long courseId, CtStatus status, Instant from, Instant to) {
+        return listEvents(courseId, status, null, null, null, from, to);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CtEventSummaryDto> listEvents(
+            Long courseId,
+            CtStatus status,
+            String department,
+            String yearTerm,
+            String batch,
+            Instant from,
+            Instant to) {
+        String normalizedYearTerm = (yearTerm != null && !yearTerm.isBlank())
+                ? YearTerm.normalizeNullable(yearTerm)
+                : null;
+
         Specification<CtEvent> spec = (root, cq, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (courseId != null) {
@@ -70,6 +88,21 @@ public class CtEventService {
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (department != null && !department.isBlank()) {
+                predicates.add(cb.equal(
+                        cb.lower(root.get("courseOffering").get("department")),
+                        department.trim().toLowerCase(Locale.ROOT)));
+            }
+            if (normalizedYearTerm != null) {
+                predicates.add(cb.equal(root.get("courseOffering").get("yearTerm"), normalizedYearTerm));
+            }
+            if (batch != null && !batch.isBlank()) {
+                String normalizedBatch = batch.trim().toLowerCase(Locale.ROOT);
+                predicates.add(cb.or(
+                        cb.isNull(root.get("targetBatch")),
+                        cb.equal(cb.lower(root.get("targetBatch")), normalizedBatch)
+                ));
             }
             if (from != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("scheduledAt"), from));
@@ -102,11 +135,16 @@ public class CtEventService {
         User submitter = requireUser(submitterId);
         User assignedTeacher = requireActiveTeacher(request.teacherId());
 
+        String examRoom = trimNullable(request.examRoom());
+        String targetBatch = trimNullable(request.targetBatch());
+
         CtEvent event = CtEvent.builder()
                 .courseOffering(course)
                 .title(request.title().trim())
                 .scheduledAt(request.scheduledAt())
                 .durationMinutes(request.durationMinutes() != null ? request.durationMinutes() : 45)
+                .examRoom(examRoom)
+                .targetBatch(targetBatch != null ? targetBatch : course.getTargetBatch())
                 .coveredTopics(request.coveredTopics() != null ? request.coveredTopics().trim() : null)
                 .status(CtStatus.UNVERIFIED)
                 .submittedBy(submitter)
@@ -128,8 +166,12 @@ public class CtEventService {
         outboxPayload.put("ctEventId", saved.getId());
         outboxPayload.put("courseOfferingId", course.getId());
         outboxPayload.put("courseCode", course.getCourseCode());
+        outboxPayload.put("yearTerm", course.getYearTerm());
         outboxPayload.put("title", saved.getTitle());
         outboxPayload.put("scheduledAt", saved.getScheduledAt().toString());
+        if (saved.getExamRoom() != null) {
+            outboxPayload.put("examRoom", saved.getExamRoom());
+        }
         outboxPayload.put("submittedById", submitter.getId());
         outboxPayload.put("submittedByName", submitter.getDisplayName());
         outboxPayload.put("teacherId", assignedTeacher.getId());
@@ -139,13 +181,14 @@ public class CtEventService {
         outboxEventPublisher.publish(AGGREGATE_TYPE, String.valueOf(saved.getId()), "CT_APPROVAL_REQUESTED", outboxPayload);
 
         if (!assignedTeacher.getId().equals(submitter.getId())) {
+            String roomSuffix = saved.getExamRoom() != null ? " in room " + saved.getExamRoom() : "";
             domainEventPublisher.publishEvent(new CtTeacherNotificationDomainEvent(
                     saved.getId(),
                     assignedTeacher.getEmail(),
                     assignedTeacher.getDisplayName(),
                     "[KUETcord] CT Approval Requested: " + course.getCourseCode() + " - " + saved.getTitle(),
                     submitter.getDisplayName() + " proposed \"" + saved.getTitle() + "\" for "
-                            + course.getCourseCode() + " scheduled at " + saved.getScheduledAt() + "."
+                            + course.getCourseCode() + " scheduled at " + saved.getScheduledAt() + roomSuffix + "."
             ));
         }
 
@@ -188,6 +231,9 @@ public class CtEventService {
         Instant previousScheduledAt = event.getScheduledAt();
 
         ctStateResolver.resolve(previousStatus).reschedule(event, request.newScheduledAt(), request.reason().trim(), actor);
+        if (request.examRoom() != null) {
+            event.setExamRoom(trimNullable(request.examRoom()));
+        }
         CtEvent saved = ctEventRepository.saveAndFlush(event);
 
         recordAuditAndEmitEvents(saved, previousStatus, previousScheduledAt, request.reason().trim(), actor, "CT_RESCHEDULED", true);
@@ -241,7 +287,11 @@ public class CtEventService {
         payload.put("ctEventId", saved.getId());
         payload.put("courseOfferingId", saved.getCourseOffering().getId());
         payload.put("courseCode", saved.getCourseOffering().getCourseCode());
+        payload.put("yearTerm", saved.getCourseOffering().getYearTerm());
         payload.put("title", saved.getTitle());
+        if (saved.getExamRoom() != null) {
+            payload.put("examRoom", saved.getExamRoom());
+        }
         payload.put("previousStatus", previousStatus.name());
         payload.put("newStatus", saved.getStatus().name());
         payload.put("scheduledAt", saved.getScheduledAt().toString());
@@ -327,5 +377,13 @@ public class CtEventService {
             throw new OptimisticLockException(
                     "CT schedule was updated concurrently (expected version " + expectedVersion + ", actual " + event.getVersion() + ")");
         }
+    }
+
+    private static String trimNullable(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

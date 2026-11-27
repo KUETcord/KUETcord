@@ -58,6 +58,18 @@ public class User {
     @Column(name = "batch", length = 20)
     private String batch;
 
+    @Column(name = "year_term", length = 10)
+    private String yearTerm;
+
+    @Column(name = "roll_number", length = 20)
+    private String rollNumber;
+
+    @Column(name = "bio", length = 280)
+    private String bio;
+
+    @Column(name = "avatar_url", columnDefinition = "TEXT")
+    private String avatarUrl;
+
     @Column(name = "email_verified_at")
     private Instant emailVerifiedAt;
 
@@ -108,4 +120,3 @@ public class User {
         return status == UserStatus.ACTIVE;
     }
 }
-

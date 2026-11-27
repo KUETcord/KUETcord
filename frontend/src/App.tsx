@@ -3,10 +3,13 @@ import { Toaster } from 'sonner';
 import { AppShell } from './components/layout/AppShell';
 import { AuthProvider } from './context/AuthContext';
 import { RealtimeProvider } from './context/RealtimeContext';
+import { AccountPage } from './pages/AccountPage';
+import { AdminConsolePage } from './pages/AdminConsolePage';
 import { AuthPage } from './pages/AuthPage';
 import { CampusPulsePage } from './pages/CampusPulsePage';
 import { CtHubPage } from './pages/CtHubPage';
 import { MessagingPage } from './pages/MessagingPage';
+import { ModuleSlotPage } from './pages/ModuleSlotPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
 import { OpportunityDetailPage } from './pages/OpportunityDetailPage';
 import { OverviewPage } from './pages/OverviewPage';
@@ -21,6 +24,38 @@ export function AppRoutes() {
       <Route element={<AppShell />}>
         <Route path="/" element={<OverviewPage />} />
         <Route path="/ct-hub" element={<CtHubPage />} />
+        <Route
+          path="/assignments"
+          element={
+            <ModuleSlotPage
+              title="Assignment Hub"
+              owner="Member B"
+              description="Course assignments with Year–Term filtering, teacher approval, optional submission links, and submitted-list links mount into this route."
+            />
+          }
+        />
+        <Route
+          path="/presentations"
+          element={
+            <ModuleSlotPage
+              title="Presentation Hub"
+              owner="Member B"
+              description="Class presentations with room scheduling, Year–Term filtering, teacher approval, optional submission links, and submitted-list links mount into this route."
+            />
+          }
+        />
+        <Route
+          path="/course-projects"
+          element={
+            <ModuleSlotPage
+              title="Project Hub"
+              owner="Member C"
+              description="Academic sessional & course projects with Year–Term filtering, teacher approval, optional submission links, submitted-list links, and Playground Kanban linking mount into this route."
+            />
+          }
+        />
+        <Route path="/account" element={<AccountPage />} />
+        <Route path="/admin" element={<AdminConsolePage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/verify-email" element={<AuthPage />} />
         <Route path="/messaging" element={<MessagingPage />} />

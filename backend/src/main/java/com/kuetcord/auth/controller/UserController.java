@@ -1,5 +1,6 @@
 package com.kuetcord.auth.controller;
 
+import com.kuetcord.auth.dto.ChangePasswordRequest;
 import com.kuetcord.auth.dto.UpdateProfileRequest;
 import com.kuetcord.auth.dto.UserSummaryDto;
 import com.kuetcord.auth.security.AuthenticatedUser;
@@ -11,12 +12,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Authenticated student self-profile management endpoints.
+ * Authenticated self-account management endpoints (profile, avatar, year-term, and password).
  */
 @RestController
 @RequestMapping("/api/v1/me")
@@ -36,7 +38,14 @@ public class UserController {
             @AuthenticationPrincipal AuthenticatedUser principal,
             @Valid @RequestBody UpdateProfileRequest request) {
         UserSummaryDto updated = userProfileService.updateProfile(principal.id(), request);
-        return ResponseEntity.ok(ApiResponse.ok("Profile updated", updated));
+        return ResponseEntity.ok(ApiResponse.ok("Account profile updated", updated));
+    }
+
+    @PostMapping("/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        userProfileService.changePassword(principal.id(), request);
+        return ResponseEntity.ok(ApiResponse.ok("Password updated successfully", null));
     }
 }
-

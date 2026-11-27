@@ -1,5 +1,12 @@
 export type GlobalRole = 'STUDENT' | 'CR' | 'TEACHER' | 'MODERATOR' | 'ADMIN';
 
+export type RoleName =
+  | 'ROLE_STUDENT'
+  | 'ROLE_CR'
+  | 'ROLE_TEACHER'
+  | 'ROLE_MODERATOR'
+  | 'ROLE_ADMIN';
+
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
 
 export interface UserSummary {
@@ -11,6 +18,11 @@ export interface UserSummary {
   roles: string[];
   department: string | null;
   batch: string | null;
+  yearTerm?: string | null;
+  rollNumber?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  hasLocalPassword?: boolean;
   emailVerified: boolean;
   status: UserStatus;
 }
@@ -37,6 +49,8 @@ export interface CourseOffering {
   courseTitle: string;
   department: string;
   semester: string;
+  yearTerm?: string;
+  targetBatch?: string | null;
   academicYear: string;
   followed: boolean;
 }
@@ -52,9 +66,13 @@ export interface CtEventSummary {
   courseOfferingId: number;
   courseCode: string;
   courseTitle: string;
+  courseDepartment?: string | null;
+  courseYearTerm?: string | null;
   title: string;
   scheduledAt: string;
   durationMinutes: number;
+  examRoom?: string | null;
+  targetBatch?: string | null;
   coveredTopics: string | null;
   status: CtStatus;
   submittedById: number;

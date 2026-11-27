@@ -3,6 +3,8 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Briefcase,
   Calendar,
+  ClipboardList,
+  FolderGit2,
   GraduationCap,
   LayoutDashboard,
   LogIn,
@@ -10,8 +12,11 @@ import {
   Megaphone,
   Menu,
   MessageSquare,
+  Presentation,
   ShieldCheck,
+  SlidersHorizontal,
   Trophy,
+  UserCog,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -21,37 +26,47 @@ interface NavItem {
   to: string;
   label: string;
   icon: typeof Calendar;
-  badge?: string;
+  adminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
   { to: '/ct-hub', label: 'CT Hub', icon: Calendar },
+  { to: '/assignments', label: 'Assignment Hub', icon: ClipboardList },
+  { to: '/presentations', label: 'Presentation Hub', icon: Presentation },
+  { to: '/course-projects', label: 'Project Hub', icon: FolderGit2 },
   { to: '/messaging', label: 'Core Messaging', icon: MessageSquare },
   { to: '/opportunities', label: 'Contest Board', icon: Trophy },
   { to: '/playgrounds', label: 'Project Playgrounds', icon: Briefcase },
   { to: '/study-circles', label: 'Study Circles', icon: GraduationCap },
   { to: '/campus-pulse', label: 'Campus Pulse', icon: Megaphone },
+  { to: '/admin', label: 'Admin Console', icon: SlidersHorizontal, adminOnly: true },
 ];
 
 const ROUTE_TITLES: Record<string, string> = {
   '/': 'Overview',
   '/ct-hub': 'CT Hub',
+  '/assignments': 'Assignment Hub',
+  '/presentations': 'Presentation Hub',
+  '/course-projects': 'Project Hub',
   '/messaging': 'Core Messaging',
   '/opportunities': 'Contest & Challenge Board',
   '/playgrounds': 'Project Playgrounds',
   '/study-circles': 'Study Circles',
   '/campus-pulse': 'Campus Pulse',
+  '/account': 'My Account',
+  '/admin': 'Governance Console',
   '/auth': 'Institutional Authentication',
 };
 
 export function AppShell() {
-  const { user, isDemoMode, enterDemoMode, logout } = useAuth();
+  const { user, isDemoMode, canAccessAdminConsole, enterDemoMode, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  // Detail routes such as /opportunities/101 fall back to their section title.
   const currentTitle =
     ROUTE_TITLES[location.pathname] ?? ROUTE_TITLES[`/${location.pathname.split('/')[1]}`] ?? 'KUETcord';
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => !item.adminOnly || canAccessAdminConsole);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
@@ -84,7 +99,7 @@ export function AppShell() {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
@@ -112,13 +127,26 @@ export function AppShell() {
         <div className="border-t border-slate-800 p-3">
           {user ? (
             <div className="space-y-2.5">
-              <div className="flex items-center gap-2.5 rounded-lg bg-slate-950/60 p-2.5">
-                <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600/25 text-xs font-semibold text-emerald-300 border border-emerald-500/30"
-                  aria-hidden="true"
-                >
-                  {getInitials(user.displayName)}
-                </div>
+              <NavLink
+                to="/account"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-2.5 rounded-lg bg-slate-950/60 p-2.5 transition-colors duration-150 ease-out hover:bg-slate-950"
+                title="Open My Account"
+              >
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={`${user.displayName} avatar`}
+                    className="h-8 w-8 shrink-0 rounded-full border border-emerald-500/30 object-cover"
+                  />
+                ) : (
+                  <div
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600/25 text-xs font-semibold text-emerald-300 border border-emerald-500/30"
+                    aria-hidden="true"
+                  >
+                    {getInitials(user.displayName)}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-semibold text-slate-100" title={user.displayName}>
                     {user.displayName}
@@ -133,23 +161,29 @@ export function AppShell() {
                 <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-300 shrink-0">
                   {user.globalRole}
                 </span>
-              </div>
+              </NavLink>
 
               {isDemoMode && (
-                <div className="grid grid-cols-3 gap-1">
-                  {(['TEACHER', 'CR', 'STUDENT'] as const).map((role) => (
+                <div className="grid grid-cols-4 gap-1">
+                  {(['ADMIN', 'TEACHER', 'CR', 'STUDENT'] as const).map((role) => (
                     <button
                       key={role}
                       type="button"
                       onClick={() => enterDemoMode(role)}
                       className={cn(
-                        'rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors duration-150 ease-out',
+                        'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors duration-150 ease-out',
                         user.globalRole === role
                           ? 'bg-emerald-600 text-white'
                           : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
                       )}
                     >
-                      {role === 'TEACHER' ? 'Teacher' : role === 'CR' ? 'CR' : 'Student'}
+                      {role === 'ADMIN'
+                        ? 'Admin'
+                        : role === 'TEACHER'
+                          ? 'Teacher'
+                          : role === 'CR'
+                            ? 'CR'
+                            : 'Student'}
                     </button>
                   ))}
                 </div>
@@ -157,11 +191,20 @@ export function AppShell() {
 
               <div className="flex items-center justify-between gap-2">
                 <NavLink
+                  to="/account"
+                  onClick={() => setSidebarOpen(false)}
+                  className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200"
+                >
+                  <UserCog className="h-3.5 w-3.5 shrink-0" />
+                  <span>My Account</span>
+                </NavLink>
+                <NavLink
                   to="/auth"
-                  className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200"
+                  onClick={() => setSidebarOpen(false)}
+                  className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200"
                 >
                   <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                  <span>Auth Portal</span>
+                  <span>Auth</span>
                 </NavLink>
                 <button
                   type="button"

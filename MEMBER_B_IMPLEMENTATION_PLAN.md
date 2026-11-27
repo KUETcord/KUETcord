@@ -673,3 +673,30 @@ npm run test -- VirtualizedChatFeed.test.tsx NotificationBell.test.tsx
   2. How `FOR UPDATE SKIP LOCKED` prevents race conditions in outbox processing.
   3. The mathematical rationale behind exponential backoff with randomized jitter.
 
+
+---
+
+## 11. Phase 7 Expansion — Assignment Hub, Presentation Hub & Top-Bar Notification Bell
+
+> **Branch:** `feature/assignment-and-presentation-hubs` (targeting **`develop`** — never push directly to `main` or `develop`)  
+> **Flyway Migration:** `V17__assignment_and_presentation_hubs.sql` (builds on Member A's `V16` `YearTerm` & `course_offerings.year_term`)
+
+### 11.1 Scope Owned by Member B
+1. **Unified Coursework Schema (`coursework_items` & `coursework_history` in `V17`):**
+   - Powers both **Assignment Hub** (`work_type = 'ASSIGNMENT'`) and **Presentation Hub** (`work_type = 'PRESENTATION'`).
+   - Columns: `id`, `work_type`, `course_offering_id` (FK), `title`, `description`, `due_at`, `location_or_room VARCHAR(100)` (e.g. presentation room/lab), **`submission_link VARCHAR(500)`** (optional, validated `http(s)://`), **`submitted_list_link VARCHAR(500)`** (optional, validated `http(s)://`), `target_batch VARCHAR(20)`, `status` (`UNVERIFIED`, `VERIFIED`, `RESCHEDULED`, `CANCELLED`), `submitted_by`, `verified_by`, `assigned_teacher_id`, `version BIGINT NOT NULL DEFAULT 0` (JPA `@Version`).
+   - Indexes: `idx_coursework_type_course_due (work_type, course_offering_id, due_at)` and `idx_coursework_teacher (assigned_teacher_id, status)`.
+2. **Backend REST API (`/api/v1/coursework`) & State/Concurrency Controls:**
+   - `GET /api/v1/coursework?type=ASSIGNMENT|PRESENTATION&department=&yearTerm=&courseId=&status=&batch=`
+   - `POST /api/v1/coursework` (`ROLE_CR`, `ROLE_TEACHER`, `ROLE_MODERATOR`, `ROLE_ADMIN`): propose with `Year–Term` course filter, searchable `teacherId`, `dueAt`, `locationOrRoom`, optional `submissionLink`, optional `submittedListLink`.
+   - `POST /api/v1/coursework/{id}/verify` (Assigned `ROLE_TEACHER` + `MODERATOR`/`ADMIN`).
+   - `POST /api/v1/coursework/{id}/reschedule` (`@Version` 409 conflict handling; CR/Assigned Teacher/Mod/Admin; notifies assigned teacher when CR reschedules).
+   - `PATCH /api/v1/coursework/{id}/links` (CR/Assigned Teacher/Mod/Admin can add or update `submissionLink` and `submittedListLink` anytime).
+   - `POST /api/v1/coursework/{id}/cancel`.
+3. **Outbox & Top-Bar Notification Bell Integration:**
+   - Register `CourseworkEventHandler` (`COURSEWORK_APPROVAL_REQUESTED`, `COURSEWORK_VERIFIED`, `COURSEWORK_RESCHEDULED`, `COURSEWORK_CANCELLED`) in `OutboxProcessor` (`SKIP LOCKED`).
+   - Mount `<NotificationBell />` in `<AppShell />` header displaying unread badge (`tabular-nums`), inbox list, and mark-read actions.
+4. **Frontend Assignment Hub (`/assignments`) & Presentation Hub (`/presentations`):**
+   - Shared `<CourseworkHubView workType="ASSIGNMENT" | "PRESENTATION" />` adhering to `DESIGN_GUIDELINES.md`.
+   - **"My Batch (`e.g. 3-1 · CSE`)"** filter **active by default** when user has `yearTerm` set (1-click toggle to `"All Terms"`), plus `Year–Term` (`1-1`..`4-2`) filter when browsing or posting.
+   - Render safe external CTA pills (`target="_blank" rel="noopener noreferrer"`) for **Submit Work** (`submissionLink`) and **Submitted List** (`submittedListLink`) whenever provided, plus an **Edit Links** modal for CRs/Teachers.

@@ -27,6 +27,22 @@ public record CreateCtEventRequest(
         Integer durationMinutes,
 
         @Size(max = 4000, message = "Covered topics must not exceed 4000 characters")
-        String coveredTopics
+        String coveredTopics,
+
+        @Size(max = 100, message = "Exam room must not exceed 100 characters")
+        String examRoom,
+
+        @Size(max = 20, message = "Target batch must not exceed 20 characters")
+        String targetBatch
 ) {
+    /** Backward-compatible constructor for existing test suites. */
+    public CreateCtEventRequest(
+            Long courseOfferingId,
+            Long teacherId,
+            String title,
+            Instant scheduledAt,
+            Integer durationMinutes,
+            String coveredTopics) {
+        this(courseOfferingId, teacherId, title, scheduledAt, durationMinutes, coveredTopics, null, null);
+    }
 }

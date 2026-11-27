@@ -10,9 +10,13 @@ public record CtEventSummaryDto(
         Long courseOfferingId,
         String courseCode,
         String courseTitle,
+        String courseDepartment,
+        String courseYearTerm,
         String title,
         Instant scheduledAt,
         int durationMinutes,
+        String examRoom,
+        String targetBatch,
         String coveredTopics,
         CtStatus status,
         Long submittedById,
@@ -25,15 +29,44 @@ public record CtEventSummaryDto(
         Instant createdAt,
         Instant updatedAt
 ) {
+    /** Backward-compatible constructor for existing test suites. */
+    public CtEventSummaryDto(
+            Long id,
+            Long courseOfferingId,
+            String courseCode,
+            String courseTitle,
+            String title,
+            Instant scheduledAt,
+            int durationMinutes,
+            String coveredTopics,
+            CtStatus status,
+            Long submittedById,
+            String submittedByName,
+            Long assignedTeacherId,
+            String assignedTeacherName,
+            Long verifiedById,
+            String verifiedByName,
+            Long version,
+            Instant createdAt,
+            Instant updatedAt) {
+        this(id, courseOfferingId, courseCode, courseTitle, null, null, title, scheduledAt, durationMinutes,
+                null, null, coveredTopics, status, submittedById, submittedByName, assignedTeacherId,
+                assignedTeacherName, verifiedById, verifiedByName, version, createdAt, updatedAt);
+    }
+
     public static CtEventSummaryDto from(CtEvent event) {
         return new CtEventSummaryDto(
                 event.getId(),
                 event.getCourseOffering().getId(),
                 event.getCourseOffering().getCourseCode(),
                 event.getCourseOffering().getCourseTitle(),
+                event.getCourseOffering().getDepartment(),
+                event.getCourseOffering().getYearTerm(),
                 event.getTitle(),
                 event.getScheduledAt(),
                 event.getDurationMinutes(),
+                event.getExamRoom(),
+                event.getTargetBatch() != null ? event.getTargetBatch() : event.getCourseOffering().getTargetBatch(),
                 event.getCoveredTopics(),
                 event.getStatus(),
                 event.getSubmittedBy().getId(),

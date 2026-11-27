@@ -54,6 +54,12 @@ public class CtEvent {
     @Column(name = "duration_minutes", nullable = false)
     private int durationMinutes = 45;
 
+    @Column(name = "exam_room", length = 100)
+    private String examRoom;
+
+    @Column(name = "target_batch", length = 20)
+    private String targetBatch;
+
     @Column(name = "covered_topics", columnDefinition = "TEXT")
     private String coveredTopics;
 

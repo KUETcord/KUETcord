@@ -56,6 +56,7 @@ flowchart LR
 | **Phase 4.5 (Teacher Approval)** | Nov 24, 2026 | `ROLE_TEACHER` (`V10`), KUET faculty email domains (`@kuet.ac.bd`, `@<dept>.kuet.ac.bd`), searchable teacher combobox, CR-to-Teacher proposal & approval workflow, automatic teacher notifications | PR #10 |
 | **Phase 5 (Docker, k6 & CD)** | Nov 25, 2026 | Fail-fast multi-stage `backend/Dockerfile` (Render 512MB JVM flags) & `frontend/Dockerfile` + `frontend/nginx.conf` (`/api/`, `/ws`, SPA `$uri`), real Docker builds in `ci.yml`, hardened `deploy.yml` smoke checks, authenticated `k6_ct_read.js` (50 VUs, p95 < 150ms), `CtHubQueryIndexIT` (`EXPLAIN` index proof) & `test_fixtures.sql` teacher seed | PR #13 |
 | **Phase 6 (Week 6 — Cross-Module)** | Nov 27, 2026 | `CtHubEventHandler` wiring CT Hub outbox (`CT_APPROVAL_REQUESTED`, `CT_VERIFIED`, `CT_RESCHEDULED`, `CT_CANCELLED`) into Member B's `SKIP LOCKED` notification engine, `CtHubToNotificationOutboxIT` E2E PostgreSQL proof, and CT card → Member C Study Circles deep links (`/study-circles?courseId=...`) | PR #16 |
+| **Phase 7 (Governance, Account & CT Room)** | Nov 28, 2026 | Flyway `V16` (`YearTerm` `1-1`..`4-2`, `exam_room`, `$0.00` WebP `avatar_url`), My Account (`/account` + password change), Admin/Mod Console (`/admin` full CRUD for Courses, direct Teacher provisioning & Users), role-friendly `/auth`, and CT Hub default `"My Batch"` filter + `examRoom` | PR #18 |
 
 ---
 
