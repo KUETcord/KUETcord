@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogIn,
   LogOut,
+  Megaphone,
   Menu,
   MessageSquare,
   ShieldCheck,
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/opportunities', label: 'Contest Board', icon: Trophy },
   { to: '/playgrounds', label: 'Project Playgrounds', icon: Briefcase },
   { to: '/study-circles', label: 'Study Circles', icon: GraduationCap },
+  { to: '/campus-pulse', label: 'Campus Pulse', icon: Megaphone },
 ];
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -39,6 +41,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/opportunities': 'Contest & Challenge Board',
   '/playgrounds': 'Project Playgrounds',
   '/study-circles': 'Study Circles',
+  '/campus-pulse': 'Campus Pulse',
   '/auth': 'Institutional Authentication',
 };
 
