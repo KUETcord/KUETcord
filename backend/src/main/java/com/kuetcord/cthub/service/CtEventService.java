@@ -18,6 +18,7 @@ import com.kuetcord.cthub.dto.RoomAllocationDto;
 import com.kuetcord.cthub.dto.VerifyCtEventRequest;
 import com.kuetcord.cthub.event.CtStatusChangedDomainEvent;
 import com.kuetcord.cthub.event.CtTeacherNotificationDomainEvent;
+import com.kuetcord.cthub.model.AssessmentType;
 import com.kuetcord.cthub.model.CourseOffering;
 import com.kuetcord.cthub.model.CtEvent;
 import com.kuetcord.cthub.model.CtEventHistory;
@@ -67,13 +68,26 @@ public class CtEventService {
 
     @Transactional(readOnly = true)
     public List<CtEventSummaryDto> listEvents(Long courseId, CtStatus status, Instant from, Instant to) {
-        return listEvents(courseId, status, null, null, null, from, to);
+        return listEvents(courseId, status, null, null, null, null, from, to);
     }
 
     @Transactional(readOnly = true)
     public List<CtEventSummaryDto> listEvents(
             Long courseId,
             CtStatus status,
+            String department,
+            String yearTerm,
+            String batch,
+            Instant from,
+            Instant to) {
+        return listEvents(courseId, status, null, department, yearTerm, batch, from, to);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CtEventSummaryDto> listEvents(
+            Long courseId,
+            CtStatus status,
+            AssessmentType assessmentType,
             String department,
             String yearTerm,
             String batch,
@@ -90,6 +104,9 @@ public class CtEventService {
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (assessmentType != null) {
+                predicates.add(cb.equal(root.get("assessmentType"), assessmentType));
             }
             if (department != null && !department.isBlank()) {
                 predicates.add(cb.equal(
@@ -161,9 +178,14 @@ public class CtEventService {
                         ? submitter.getDepartment().trim().toUpperCase(Locale.ROOT)
                         : course.getDepartment().trim().toUpperCase(Locale.ROOT));
 
+        AssessmentType assessmentType = request.assessmentType() != null
+                ? request.assessmentType()
+                : AssessmentType.CT;
+        String typeLabel = assessmentType.displayLabel();
+
         if (isCrOnly(submitter) && submitter.getDepartment() != null && !submitter.getDepartment().isBlank()
                 && !targetDepartment.equalsIgnoreCase(submitter.getDepartment().trim())) {
-            throw new ForbiddenException("CRs can only propose CTs for their own department (" + submitter.getDepartment() + ")");
+            throw new ForbiddenException("CRs can only propose " + typeLabel + " schedules for their own department (" + submitter.getDepartment() + ")");
         }
 
         String requestedYearTerm = trimNullable(request.targetYearTerm());
@@ -173,6 +195,7 @@ public class CtEventService {
 
         CtEvent event = CtEvent.builder()
                 .courseOffering(course)
+                .assessmentType(assessmentType)
                 .title(request.title().trim())
                 .scheduledAt(request.scheduledAt())
                 .durationMinutes(request.durationMinutes() != null ? request.durationMinutes() : 45)
@@ -208,6 +231,8 @@ public class CtEventService {
 
         Map<String, Object> outboxPayload = new LinkedHashMap<>();
         outboxPayload.put("ctEventId", saved.getId());
+        outboxPayload.put("assessmentType", assessmentType.name());
+        outboxPayload.put("assessmentLabel", typeLabel);
         outboxPayload.put("courseOfferingId", course.getId());
         outboxPayload.put("courseCode", course.getCourseCode());
         outboxPayload.put("yearTerm", course.getYearTerm());
@@ -237,8 +262,8 @@ public class CtEventService {
                         saved.getId(),
                         teacher.getEmail(),
                         teacher.getDisplayName(),
-                        "[KUETcord] CT Approval Requested: " + course.getCourseCode() + " - " + saved.getTitle(),
-                        submitter.getDisplayName() + " proposed \"" + saved.getTitle() + "\" for "
+                        "[KUETcord] " + typeLabel + " Approval Requested: " + course.getCourseCode() + " - " + saved.getTitle(),
+                        submitter.getDisplayName() + " proposed " + typeLabel + " \"" + saved.getTitle() + "\" for "
                                 + course.getCourseCode() + " scheduled at " + saved.getScheduledAt() + roomSuffix + "."
                 ));
             }
@@ -341,8 +366,13 @@ public class CtEventService {
                 : List.of();
         boolean notifyTeacher = !teachersToNotify.isEmpty();
 
+        AssessmentType effectiveType = saved.getAssessmentType() != null ? saved.getAssessmentType() : AssessmentType.CT;
+        String typeLabel = effectiveType.displayLabel();
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("ctEventId", saved.getId());
+        payload.put("assessmentType", effectiveType.name());
+        payload.put("assessmentLabel", typeLabel);
         payload.put("courseOfferingId", saved.getCourseOffering().getId());
         payload.put("courseCode", saved.getCourseOffering().getCourseCode());
         payload.put("yearTerm", saved.getCourseOffering().getYearTerm());
@@ -389,8 +419,8 @@ public class CtEventService {
                         saved.getId(),
                         teacher.getEmail(),
                         teacher.getDisplayName(),
-                        "[KUETcord] CT " + actionLabel + ": " + saved.getCourseOffering().getCourseCode() + " - " + saved.getTitle(),
-                        actor.getDisplayName() + " " + actionLabel + " \"" + saved.getTitle()
+                        "[KUETcord] " + typeLabel + " " + actionLabel + ": " + saved.getCourseOffering().getCourseCode() + " - " + saved.getTitle(),
+                        actor.getDisplayName() + " " + actionLabel + " " + typeLabel + " \"" + saved.getTitle()
                                 + "\" (" + saved.getCourseOffering().getCourseCode() + "). Reason: " + reason
                 ));
             }

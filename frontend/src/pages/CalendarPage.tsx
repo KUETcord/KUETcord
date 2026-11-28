@@ -33,6 +33,18 @@ const EVENT_TYPE_META: Record<
     pill: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25',
     badge: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
   },
+  LABTEST: {
+    label: 'Lab Tests',
+    dot: 'bg-cyan-400',
+    pill: 'border-cyan-500/40 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25',
+    badge: 'border-cyan-500/40 bg-cyan-500/15 text-cyan-300',
+  },
+  QUIZ: {
+    label: 'Quizzes',
+    dot: 'bg-amber-400',
+    pill: 'border-amber-500/40 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25',
+    badge: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
+  },
   ASSIGNMENT: {
     label: 'Assignments',
     dot: 'bg-sky-400',
@@ -47,9 +59,9 @@ const EVENT_TYPE_META: Record<
   },
   PROJECT: {
     label: 'Project Showcase',
-    dot: 'bg-amber-400',
-    pill: 'border-amber-500/40 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25',
-    badge: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
+    dot: 'bg-orange-400',
+    pill: 'border-orange-500/40 bg-orange-500/15 text-orange-200 hover:bg-orange-500/25',
+    badge: 'border-orange-500/40 bg-orange-500/15 text-orange-300',
   },
   TERM_FINAL: {
     label: 'Term Finals',
@@ -61,6 +73,8 @@ const EVENT_TYPE_META: Record<
 
 const ALL_TYPES: CalendarEventType[] = [
   'CT',
+  'LABTEST',
+  'QUIZ',
   'ASSIGNMENT',
   'PRESENTATION',
   'PROJECT',
@@ -116,6 +130,8 @@ export function CalendarPage() {
   // Category checkboxes (Google Calendar "My Calendars" style)
   const [enabledTypes, setEnabledTypes] = useState<Record<CalendarEventType, boolean>>({
     CT: true,
+    LABTEST: true,
+    QUIZ: true,
     ASSIGNMENT: true,
     PRESENTATION: true,
     PROJECT: true,
@@ -195,6 +211,8 @@ export function CalendarPage() {
   const typeCounts = useMemo(() => {
     const counts: Record<CalendarEventType, number> = {
       CT: 0,
+      LABTEST: 0,
+      QUIZ: 0,
       ASSIGNMENT: 0,
       PRESENTATION: 0,
       PROJECT: 0,

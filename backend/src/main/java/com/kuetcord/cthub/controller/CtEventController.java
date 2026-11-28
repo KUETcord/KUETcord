@@ -8,6 +8,7 @@ import com.kuetcord.cthub.dto.CtEventDetailDto;
 import com.kuetcord.cthub.dto.CtEventSummaryDto;
 import com.kuetcord.cthub.dto.RescheduleCtEventRequest;
 import com.kuetcord.cthub.dto.VerifyCtEventRequest;
+import com.kuetcord.cthub.model.AssessmentType;
 import com.kuetcord.cthub.model.CtStatus;
 import com.kuetcord.cthub.service.CtEventService;
 import jakarta.validation.Valid;
@@ -42,14 +43,15 @@ public class CtEventController {
     public ResponseEntity<ApiResponse<List<CtEventSummaryDto>>> listEvents(
             @RequestParam(required = false) Long courseId,
             @RequestParam(required = false) CtStatus status,
+            @RequestParam(required = false) AssessmentType assessmentType,
             @RequestParam(required = false) String department,
             @RequestParam(required = false) String yearTerm,
             @RequestParam(required = false) String batch,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
-        List<CtEventSummaryDto> events = (department == null && yearTerm == null && batch == null)
+        List<CtEventSummaryDto> events = (assessmentType == null && department == null && yearTerm == null && batch == null)
                 ? ctEventService.listEvents(courseId, status, from, to)
-                : ctEventService.listEvents(courseId, status, department, yearTerm, batch, from, to);
+                : ctEventService.listEvents(courseId, status, assessmentType, department, yearTerm, batch, from, to);
         return ResponseEntity.ok(ApiResponse.ok(events));
     }
 

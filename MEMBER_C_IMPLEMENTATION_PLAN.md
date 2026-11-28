@@ -600,7 +600,7 @@ npm run test -- KanbanBoard.test.tsx TaskCard.test.tsx PomodoroTimer.test.tsx
 ## 11. Phase 7 Expansion — Academic Project Hub & Campus Pulse Year–Term / CR Notices
 
 > **Branch:** `feature/project-hub-and-pulse-yearterm` (targeting **`develop`** — never push directly to `main` or `develop`)  
-> **Flyway Migration:** `V18__project_hub_and_pulse_year_term.sql` (builds on Member A's `V16` `YearTerm` & `course_offerings.year_term`)
+> **Flyway Migration:** `V18__project_hub_and_pulse_year_term.sql` *(reserved for Member C; Member A owns `V16`, `V19`, `V20` Term Hub central roll-range rooms, and `V21` Labtest Hub `/labtest-hub` & Quiz Hub `/quiz-hub`; Member B owns `V17`)*
 
 ### 11.1 Scope Owned by Member C
 1. **Academic Project Hub (`academic_projects` & `academic_project_history` in `V18`):**
@@ -616,6 +616,7 @@ npm run test -- KanbanBoard.test.tsx TaskCard.test.tsx PomodoroTimer.test.tsx
    - Frontend `/campus-pulse` (`CampusPulsePage.tsx`): **"My Batch (`e.g. 3-1 · CSE`)"** filter **active by default** for students with `yearTerm` set (matching their `yearTerm`/`department` plus campus-wide notices, with 1-click toggle to `"All Notices"`), and `Year–Term` + `Department` + `Batch` selectors in the Notice Composer for CRs, Teachers, Mods, and Admins.
 3. **Academic Calendar Sync (`CalendarEventProvider` SPI):**
    - Implement `ProjectHubCalendarEventProvider implements CalendarEventProvider` returning `PROJECT` (Project Showcase) items (filtered by `from`, `to`, `yearTerm`, `department`, `batch`) so Member A's Google Calendar-style `/calendar` tab automatically stays in sync with Project Hub deadlines (including `demoRoom`, `submissionLink`, `submittedListLink`, and Playground link).
+   - **Unified `CalendarEventType` Set:** `CT`, `TERM_FINAL`, `LABTEST`, `QUIZ`, `ASSIGNMENT`, `PRESENTATION`, `PROJECT` (Member A provides `CT`, `TERM_FINAL`, `LABTEST`, `QUIZ`; Member B provides `ASSIGNMENT`, `PRESENTATION`; Member C provides `PROJECT`).
 4. **Mandatory Cross-Department `target_department` + `target_year_term` & CR Own-Department Rule (Aligned with Member A `V19`):**
    - **Cross-Department Courses in Project Hub:** Because KUET students frequently take sessional/course projects offered by another department (e.g., **CSE 1-1** students taking an **`EEE 1108`** lab project), `academic_projects` MUST include `target_department VARCHAR(16) NOT NULL` and `target_year_term VARCHAR(10)` (indexed on `(target_department, target_year_term, due_at)`).
    - **Query & Calendar Filtering:** `GET /api/v1/course-projects?department=CSE&yearTerm=1-1` and `ProjectHubCalendarEventProvider` MUST filter and project by `target_department` and `target_year_term` (falling back to `course_offerings.year_term` only if `target_year_term` is null) — **never** by `course_offerings.department` alone. Render a `Cross-Dept` badge when `courseDepartment != targetDepartment`.

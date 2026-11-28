@@ -679,7 +679,7 @@ npm run test -- VirtualizedChatFeed.test.tsx NotificationBell.test.tsx
 ## 11. Phase 7 Expansion — Assignment Hub, Presentation Hub & Top-Bar Notification Bell
 
 > **Branch:** `feature/assignment-and-presentation-hubs` (targeting **`develop`** — never push directly to `main` or `develop`)  
-> **Flyway Migration:** `V17__assignment_and_presentation_hubs.sql` (builds on Member A's `V16` `YearTerm` & `course_offerings.year_term`)
+> **Flyway Migration:** `V17__assignment_and_presentation_hubs.sql` *(reserved for Member B; Member A owns `V16`, `V19`, `V20` Term Hub central roll-range rooms, and `V21` Labtest Hub `/labtest-hub` & Quiz Hub `/quiz-hub`; Member C owns `V18`)*
 
 ### 11.1 Scope Owned by Member B
 1. **Unified Coursework Schema (`coursework_items` & `coursework_history` in `V17`):**
@@ -702,6 +702,7 @@ npm run test -- VirtualizedChatFeed.test.tsx NotificationBell.test.tsx
    - Render safe external CTA pills (`target="_blank" rel="noopener noreferrer"`) for **Submit Work** (`submissionLink`) and **Submitted List** (`submittedListLink`) whenever provided, plus an **Edit Links** modal for CRs/Teachers.
 5. **Academic Calendar Sync (`CalendarEventProvider` SPI):**
    - Implement `CourseworkCalendarEventProvider implements CalendarEventProvider` returning `ASSIGNMENT` and `PRESENTATION` items (filtered by `from`, `to`, `yearTerm`, `department`, `batch`) so Member A's Google Calendar-style `/calendar` tab automatically stays in sync with Assignment Hub and Presentation Hub deadlines (including `locationOrRoom`, `submissionLink`, and `submittedListLink`).
+   - **Unified `CalendarEventType` Set:** `CT`, `TERM_FINAL`, `LABTEST`, `QUIZ`, `ASSIGNMENT`, `PRESENTATION`, `PROJECT` (Member A provides `CT`, `TERM_FINAL`, `LABTEST`, `QUIZ`; Member B provides `ASSIGNMENT`, `PRESENTATION`; Member C provides `PROJECT`).
 6. **Mandatory Cross-Department `target_department` + `target_year_term` & CR Own-Department Rule (Aligned with Member A `V19`):**
    - **Cross-Department Courses:** Because KUET students frequently take courses offered by another department (e.g., **CSE 1-1** students taking **`EEE 1107`**), `coursework_items` MUST include `target_department VARCHAR(16) NOT NULL` and `target_year_term VARCHAR(10)` (with composite index on `(target_department, target_year_term, due_at)`).
    - **Query & Calendar Filtering:** `GET /api/v1/coursework?department=CSE&yearTerm=1-1` and `CourseworkCalendarEventProvider` MUST filter and project by `target_department` and `target_year_term` (falling back to `course_offerings.year_term` only if `target_year_term` is null) — **never** by `course_offerings.department` alone — so an `EEE 1107` assignment/presentation posted for `CSE 1-1` appears for CSE students and does NOT leak into EEE's feed. Render a `Cross-Dept` badge when `courseDepartment != targetDepartment`.

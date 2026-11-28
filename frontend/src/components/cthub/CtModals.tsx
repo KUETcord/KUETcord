@@ -15,11 +15,57 @@ import { ctHubApi } from '../../lib/api';
 import { getInitials } from '../../lib/format';
 import { KUET_DEPARTMENTS, resolveYearTerm, YEAR_TERM_OPTIONS } from '../../lib/yearTerm';
 import type {
+  AssessmentType,
   CourseOffering,
   CtEventSummary,
   RoomAllocation,
   TeacherSummary,
 } from '../../types/domain';
+
+const ASSESSMENT_MODAL_COPY: Record<
+  AssessmentType,
+  {
+    singular: string;
+    shortLabel: string;
+    proposeTitle: string;
+    titleLabel: string;
+    titlePlaceholder: string;
+    roomPlaceholder: string;
+    defaultDuration: string;
+    hubName: string;
+  }
+> = {
+  CT: {
+    singular: 'Class Test',
+    shortLabel: 'CT',
+    proposeTitle: 'Propose Class Test Schedule',
+    titleLabel: 'CT Title',
+    titlePlaceholder: 'e.g., CT 2: Dynamic Programming & Shortest Paths',
+    roomPlaceholder: 'Room (e.g., CSE-101)',
+    defaultDuration: '45',
+    hubName: 'CT Hub',
+  },
+  LABTEST: {
+    singular: 'Lab Test',
+    shortLabel: 'Lab Test',
+    proposeTitle: 'Propose Lab Test Schedule',
+    titleLabel: 'Lab Test Title',
+    titlePlaceholder: 'e.g., CSE 3220 Lab Test 1: REST API & CI/CD',
+    roomPlaceholder: 'Lab Room (e.g., CSE Software Lab-1)',
+    defaultDuration: '90',
+    hubName: 'Labtest Hub',
+  },
+  QUIZ: {
+    singular: 'Quiz',
+    shortLabel: 'Quiz',
+    proposeTitle: 'Propose Quiz Schedule',
+    titleLabel: 'Quiz Title',
+    titlePlaceholder: 'e.g., CSE 3101 Quiz 2: Relational Algebra & Indexing',
+    roomPlaceholder: 'Room (e.g., CSE-204)',
+    defaultDuration: '20',
+    hubName: 'Quiz Hub',
+  },
+};
 
 interface RoomRowDraft {
   rollStart: string;
@@ -51,9 +97,11 @@ function toRoomAllocations(rows: RoomRowDraft[]): {
 function RoomAllocationEditor({
   rows,
   onChange,
+  roomPlaceholder = 'Room (e.g., CSE-101)',
 }: {
   rows: RoomRowDraft[];
   onChange: (next: RoomRowDraft[]) => void;
+  roomPlaceholder?: string;
 }) {
   const addRow = () => {
     const last = rows[rows.length - 1];
@@ -119,7 +167,7 @@ function RoomAllocationEditor({
                 aria-label={`Room ${idx + 1} name`}
                 value={row.room}
                 onChange={(e) => updateRow(idx, { room: e.target.value })}
-                placeholder="Room (e.g., CSE-101)"
+                placeholder={roomPlaceholder}
                 className="col-span-5 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
               />
               <button
@@ -182,6 +230,7 @@ function ModalFrame({
 interface ProposeCtModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  assessmentType?: AssessmentType;
   courses: CourseOffering[];
   defaultYearTerm?: string | null;
   defaultDepartment?: string | null;
@@ -201,12 +250,14 @@ interface ProposeCtModalProps {
     coveredTopics?: string;
     targetDepartment?: string;
     targetYearTerm?: string;
+    assessmentType: AssessmentType;
   }) => Promise<void>;
 }
 
 export function ProposeCtModal({
   open,
   onOpenChange,
+  assessmentType = 'CT',
   courses,
   defaultYearTerm,
   defaultDepartment,
@@ -215,6 +266,7 @@ export function ProposeCtModal({
   isDemoMode,
   onSubmit,
 }: ProposeCtModalProps) {
+  const copy = ASSESSMENT_MODAL_COPY[assessmentType];
   const [targetDepartment, setTargetDepartment] = useState<string>(defaultDepartment ?? 'CSE');
   const [postingYearTerm, setPostingYearTerm] = useState<string>(defaultYearTerm ?? '');
   const [courseOfferingId, setCourseOfferingId] = useState<string>(
@@ -227,13 +279,17 @@ export function ProposeCtModal({
 
   const [title, setTitle] = useState('');
   const [scheduledLocal, setScheduledLocal] = useState('2026-12-01T10:00');
-  const [durationMinutes, setDurationMinutes] = useState('45');
+  const [durationMinutes, setDurationMinutes] = useState(copy.defaultDuration);
   const [roomRows, setRoomRows] = useState<RoomRowDraft[]>([
     { rollStart: '1', rollEnd: '40', room: '' },
   ]);
   const [coveredTopics, setCoveredTopics] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDurationMinutes(ASSESSMENT_MODAL_COPY[assessmentType].defaultDuration);
+  }, [assessmentType]);
 
   useEffect(() => {
     if (!open) return;
@@ -340,6 +396,7 @@ export function ProposeCtModal({
         coveredTopics: coveredTopics.trim() || undefined,
         targetDepartment: targetDepartment || undefined,
         targetYearTerm: postingYearTerm || undefined,
+        assessmentType,
       });
       setTitle('');
       setRoomRows([{ rollStart: '1', rollEnd: '40', room: '' }]);
@@ -348,7 +405,7 @@ export function ProposeCtModal({
       setSelectedTeachers([]);
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to propose CT schedule');
+      setError(err instanceof Error ? err.message : `Failed to propose ${copy.shortLabel} schedule`);
     } finally {
       setSubmitting(false);
     }
@@ -358,7 +415,7 @@ export function ProposeCtModal({
     <ModalFrame
       open={open}
       onOpenChange={onOpenChange}
-      title="Propose Class Test Schedule"
+      title={copy.proposeTitle}
       description="Assign 1 or 2 combined course teachers and optional roll-range exam rooms. Both teachers are notified for approval."
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -429,7 +486,7 @@ export function ProposeCtModal({
             targetDepartment &&
             selectedCourse.department.toUpperCase() !== targetDepartment.toUpperCase() && (
               <p className="mt-1 text-[11px] text-amber-300">
-                Cross-department course ({selectedCourse.department}) — will appear in {targetDepartment} CT Hub &amp; Calendar.
+                Cross-department course ({selectedCourse.department}) — will appear in {targetDepartment} {copy.hubName} &amp; Calendar.
               </p>
             )}
         </div>
@@ -533,7 +590,7 @@ export function ProposeCtModal({
 
         <div>
           <label htmlFor="ct-title" className="block text-xs font-medium text-slate-300">
-            CT Title
+            {copy.titleLabel}
           </label>
           <input
             id="ct-title"
@@ -541,7 +598,7 @@ export function ProposeCtModal({
             maxLength={150}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g., CT 2: Dynamic Programming & Shortest Paths"
+            placeholder={copy.titlePlaceholder}
             className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
             required
           />
@@ -578,7 +635,11 @@ export function ProposeCtModal({
           </div>
         </div>
 
-        <RoomAllocationEditor rows={roomRows} onChange={setRoomRows} />
+        <RoomAllocationEditor
+          rows={roomRows}
+          onChange={setRoomRows}
+          roomPlaceholder={copy.roomPlaceholder}
+        />
 
         <div>
           <label htmlFor="ct-topics" className="block text-xs font-medium text-slate-300">
@@ -642,6 +703,7 @@ export function RescheduleCtModal({
   onReloadLatest,
   onSubmit,
 }: RescheduleCtModalProps) {
+  const copy = ASSESSMENT_MODAL_COPY[event?.assessmentType ?? 'CT'];
   const [newScheduledLocal, setNewScheduledLocal] = useState('2026-12-03T10:30');
   const [roomRows, setRoomRows] = useState<RoomRowDraft[]>([]);
   const [reason, setReason] = useState('');
@@ -708,7 +770,7 @@ export function RescheduleCtModal({
     <ModalFrame
       open={Boolean(event)}
       onOpenChange={onOpenChange}
-      title="Reschedule Class Test"
+      title={`Reschedule ${copy.singular}`}
       description={
         event
           ? `Protected by JPA @Version optimistic locking (v${event.version}). Assigned teacher(s) and course followers will be notified.`
@@ -754,7 +816,11 @@ export function RescheduleCtModal({
             />
           </div>
 
-          <RoomAllocationEditor rows={roomRows} onChange={setRoomRows} />
+          <RoomAllocationEditor
+          rows={roomRows}
+          onChange={setRoomRows}
+          roomPlaceholder={copy.roomPlaceholder}
+        />
 
           <div>
             <label htmlFor="reschedule-reason" className="block text-xs font-medium text-slate-300">
@@ -805,6 +871,7 @@ interface CancelCtModalProps {
 }
 
 export function CancelCtModal({ event, onOpenChange, onSubmit }: CancelCtModalProps) {
+  const copy = ASSESSMENT_MODAL_COPY[event?.assessmentType ?? 'CT'];
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -827,8 +894,8 @@ export function CancelCtModal({ event, onOpenChange, onSubmit }: CancelCtModalPr
     <ModalFrame
       open={Boolean(event)}
       onOpenChange={onOpenChange}
-      title="Cancel Class Test"
-      description="Cancelling transitions this CT to the terminal CANCELLED state and notifies the assigned teacher(s) and course followers."
+      title={`Cancel ${copy.singular}`}
+      description={`Cancelling transitions this ${copy.shortLabel} to the terminal CANCELLED state and notifies the assigned teacher(s) and course followers.`}
     >
       {event && (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -853,7 +920,7 @@ export function CancelCtModal({ event, onOpenChange, onSubmit }: CancelCtModalPr
                 type="button"
                 className="rounded-lg border border-slate-700 px-3.5 py-2 text-xs font-medium text-slate-300 transition-colors duration-150 ease-out hover:bg-slate-800"
               >
-                Keep CT
+                Keep {copy.shortLabel}
               </button>
             </Dialog.Close>
             <button
@@ -862,7 +929,7 @@ export function CancelCtModal({ event, onOpenChange, onSubmit }: CancelCtModalPr
               className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-medium text-white transition-[background-color,transform] duration-100 ease-out hover:bg-rose-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
-              <span>Cancel CT</span>
+              <span>Cancel {copy.shortLabel}</span>
             </button>
           </div>
         </form>

@@ -1,5 +1,6 @@
 package com.kuetcord.cthub.dto;
 
+import com.kuetcord.cthub.model.AssessmentType;
 import com.kuetcord.cthub.model.CtEvent;
 import com.kuetcord.cthub.model.CtStatus;
 
@@ -15,6 +16,7 @@ public record CtEventSummaryDto(
         String courseYearTerm,
         String targetDepartment,
         String targetYearTerm,
+        AssessmentType assessmentType,
         String title,
         Instant scheduledAt,
         int durationMinutes,
@@ -55,7 +57,8 @@ public record CtEventSummaryDto(
             Long version,
             Instant createdAt,
             Instant updatedAt) {
-        this(id, courseOfferingId, courseCode, courseTitle, null, null, null, null, title, scheduledAt, durationMinutes,
+        this(id, courseOfferingId, courseCode, courseTitle, null, null, null, null, AssessmentType.CT,
+                title, scheduledAt, durationMinutes,
                 null, List.of(), null, coveredTopics, status, submittedById, submittedByName,
                 assignedTeacherId, assignedTeacherName, null, null,
                 verifiedById, verifiedByName, version, createdAt, updatedAt);
@@ -86,9 +89,45 @@ public record CtEventSummaryDto(
             Instant createdAt,
             Instant updatedAt) {
         this(id, courseOfferingId, courseCode, courseTitle, courseDepartment, courseYearTerm,
-                courseDepartment, courseYearTerm, title,
+                courseDepartment, courseYearTerm, AssessmentType.CT, title,
                 scheduledAt, durationMinutes, examRoom, List.of(), targetBatch, coveredTopics, status,
                 submittedById, submittedByName, assignedTeacherId, assignedTeacherName, null, null,
+                verifiedById, verifiedByName, version, createdAt, updatedAt);
+    }
+
+    /** Backward-compatible 27-arg constructor. */
+    public CtEventSummaryDto(
+            Long id,
+            Long courseOfferingId,
+            String courseCode,
+            String courseTitle,
+            String courseDepartment,
+            String courseYearTerm,
+            String targetDepartment,
+            String targetYearTerm,
+            String title,
+            Instant scheduledAt,
+            int durationMinutes,
+            String examRoom,
+            List<RoomAllocationDto> roomAllocations,
+            String targetBatch,
+            String coveredTopics,
+            CtStatus status,
+            Long submittedById,
+            String submittedByName,
+            Long assignedTeacherId,
+            String assignedTeacherName,
+            Long coTeacherId,
+            String coTeacherName,
+            Long verifiedById,
+            String verifiedByName,
+            Long version,
+            Instant createdAt,
+            Instant updatedAt) {
+        this(id, courseOfferingId, courseCode, courseTitle, courseDepartment, courseYearTerm,
+                targetDepartment, targetYearTerm, AssessmentType.CT, title,
+                scheduledAt, durationMinutes, examRoom, roomAllocations, targetBatch, coveredTopics, status,
+                submittedById, submittedByName, assignedTeacherId, assignedTeacherName, coTeacherId, coTeacherName,
                 verifiedById, verifiedByName, version, createdAt, updatedAt);
     }
 
@@ -105,6 +144,9 @@ public record CtEventSummaryDto(
         String effectiveYearTerm = (event.getTargetYearTerm() != null && !event.getTargetYearTerm().isBlank())
                 ? event.getTargetYearTerm()
                 : event.getCourseOffering().getYearTerm();
+        AssessmentType effectiveType = event.getAssessmentType() != null
+                ? event.getAssessmentType()
+                : AssessmentType.CT;
 
         return new CtEventSummaryDto(
                 event.getId(),
@@ -115,6 +157,7 @@ public record CtEventSummaryDto(
                 event.getCourseOffering().getYearTerm(),
                 effectiveDept,
                 effectiveYearTerm,
+                effectiveType,
                 event.getTitle(),
                 event.getScheduledAt(),
                 event.getDurationMinutes(),

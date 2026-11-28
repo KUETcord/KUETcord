@@ -43,6 +43,8 @@ export interface AuthResponse {
 
 export type CtStatus = 'UNVERIFIED' | 'VERIFIED' | 'RESCHEDULED' | 'CANCELLED';
 
+export type AssessmentType = 'CT' | 'LABTEST' | 'QUIZ';
+
 export interface CourseOffering {
   id: number;
   courseCode: string;
@@ -76,6 +78,7 @@ export interface CtEventSummary {
   courseYearTerm?: string | null;
   targetDepartment?: string | null;
   targetYearTerm?: string | null;
+  assessmentType?: AssessmentType;
   title: string;
   scheduledAt: string;
   durationMinutes: number;
@@ -114,7 +117,14 @@ export interface CtEventDetail {
   history: CtEventHistory[];
 }
 
-export type CalendarEventType = 'CT' | 'ASSIGNMENT' | 'PRESENTATION' | 'PROJECT' | 'TERM_FINAL';
+export type CalendarEventType =
+  | 'CT'
+  | 'LABTEST'
+  | 'QUIZ'
+  | 'ASSIGNMENT'
+  | 'PRESENTATION'
+  | 'PROJECT'
+  | 'TERM_FINAL';
 
 export interface TermFinalEntry {
   id: number;

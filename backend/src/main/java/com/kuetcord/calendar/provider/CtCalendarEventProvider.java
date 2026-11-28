@@ -4,6 +4,7 @@ import com.kuetcord.calendar.dto.CalendarEventDto;
 import com.kuetcord.calendar.model.CalendarEventType;
 import com.kuetcord.calendar.spi.CalendarEventProvider;
 import com.kuetcord.cthub.dto.CtEventSummaryDto;
+import com.kuetcord.cthub.model.AssessmentType;
 import com.kuetcord.cthub.service.CtEventService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -14,18 +15,24 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Supplies live CT Hub schedules (including multi-room roll-range summary,
- * combined 2-teacher names, and Year-Term metadata) to the unified Calendar Tab.
+ * Supplies live CT Hub, Labtest Hub, and Quiz Hub schedules (including multi-room roll-range
+ * summary, combined 2-teacher names, and Year-Term metadata) to the unified Calendar Tab.
  */
 @Component
 @RequiredArgsConstructor
 public class CtCalendarEventProvider implements CalendarEventProvider {
 
+    private static final Set<CalendarEventType> SUPPORTED = Set.of(
+            CalendarEventType.CT,
+            CalendarEventType.LABTEST,
+            CalendarEventType.QUIZ
+    );
+
     private final CtEventService ctEventService;
 
     @Override
     public Set<CalendarEventType> supportedTypes() {
-        return Set.of(CalendarEventType.CT);
+        return SUPPORTED;
     }
 
     @Override
@@ -36,21 +43,25 @@ public class CtCalendarEventProvider implements CalendarEventProvider {
             String department,
             String yearTerm,
             String batch) {
-        if (!requestedTypes.contains(CalendarEventType.CT)) {
+        boolean anySupportedRequested = SUPPORTED.stream().anyMatch(requestedTypes::contains);
+        if (!anySupportedRequested) {
             return List.of();
         }
         List<CtEventSummaryDto> events = ctEventService.listEvents(
                 null, null, department, yearTerm, batch, from, to);
         return events.stream()
+                .filter(ev -> requestedTypes.contains(toCalendarType(ev.assessmentType())))
                 .map(ev -> {
+                    AssessmentType assessmentType = ev.assessmentType() != null ? ev.assessmentType() : AssessmentType.CT;
+                    CalendarEventType calendarType = toCalendarType(assessmentType);
                     String teacherLabel = ev.assignedTeacherName();
                     if (ev.coTeacherName() != null && !ev.coTeacherName().isBlank()) {
                         teacherLabel = (teacherLabel != null ? teacherLabel + " & " : "") + ev.coTeacherName();
                     }
                     return new CalendarEventDto(
-                            "ct:" + ev.id(),
+                            idPrefix(assessmentType) + ":" + ev.id(),
                             ev.id(),
-                            CalendarEventType.CT,
+                            calendarType,
                             ev.title(),
                             ev.courseOfferingId(),
                             ev.courseCode(),
@@ -66,9 +77,36 @@ public class CtCalendarEventProvider implements CalendarEventProvider {
                             teacherLabel,
                             null,
                             null,
-                            "/ct-hub"
+                            hubRoute(assessmentType)
                     );
                 })
                 .toList();
+    }
+
+    private static CalendarEventType toCalendarType(AssessmentType type) {
+        if (type == null) {
+            return CalendarEventType.CT;
+        }
+        return switch (type) {
+            case CT -> CalendarEventType.CT;
+            case LABTEST -> CalendarEventType.LABTEST;
+            case QUIZ -> CalendarEventType.QUIZ;
+        };
+    }
+
+    private static String idPrefix(AssessmentType type) {
+        return switch (type) {
+            case CT -> "ct";
+            case LABTEST -> "labtest";
+            case QUIZ -> "quiz";
+        };
+    }
+
+    private static String hubRoute(AssessmentType type) {
+        return switch (type) {
+            case CT -> "/ct-hub";
+            case LABTEST -> "/labtest-hub";
+            case QUIZ -> "/quiz-hub";
+        };
     }
 }

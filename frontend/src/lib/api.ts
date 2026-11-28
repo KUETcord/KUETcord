@@ -1,4 +1,5 @@
 import type {
+  AssessmentType,
   AuthResponse,
   CalendarEvent,
   CalendarEventType,
@@ -194,6 +195,7 @@ export const ctHubApi = {
   listEvents(params?: {
     courseId?: number;
     status?: CtStatus | '';
+    assessmentType?: AssessmentType;
     department?: string;
     yearTerm?: string;
     batch?: string;
@@ -203,6 +205,7 @@ export const ctHubApi = {
     const qs = new URLSearchParams();
     if (params?.courseId) qs.set('courseId', String(params.courseId));
     if (params?.status) qs.set('status', params.status);
+    if (params?.assessmentType) qs.set('assessmentType', params.assessmentType);
     if (params?.department) qs.set('department', params.department);
     if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
     if (params?.batch) qs.set('batch', params.batch);
@@ -237,6 +240,7 @@ export const ctHubApi = {
     targetBatch?: string;
     targetDepartment?: string;
     targetYearTerm?: string;
+    assessmentType?: AssessmentType;
   }): Promise<CtEventSummary> {
     return request<CtEventSummary>('/ct/events', {
       method: 'POST',

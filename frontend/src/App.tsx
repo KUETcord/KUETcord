@@ -26,7 +26,9 @@ export function AppRoutes() {
       <Route element={<AppShell />}>
         <Route path="/" element={<OverviewPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/ct-hub" element={<CtHubPage />} />
+        <Route path="/ct-hub" element={<CtHubPage assessmentType="CT" />} />
+        <Route path="/labtest-hub" element={<CtHubPage assessmentType="LABTEST" />} />
+        <Route path="/quiz-hub" element={<CtHubPage assessmentType="QUIZ" />} />
         <Route path="/term-hub" element={<TermHubPage />} />
         <Route
           path="/assignments"

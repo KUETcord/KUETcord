@@ -5,6 +5,8 @@ package com.kuetcord.calendar.model;
  */
 public enum CalendarEventType {
     CT,
+    LABTEST,
+    QUIZ,
     TERM_FINAL,
     ASSIGNMENT,
     PRESENTATION,
