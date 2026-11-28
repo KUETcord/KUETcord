@@ -38,10 +38,12 @@ public class CtCourseController {
             @AuthenticationPrincipal AuthenticatedUser principal,
             @RequestParam(required = false) String department,
             @RequestParam(required = false) String semester,
+            @RequestParam(required = false) String yearTerm,
             @RequestParam(required = false) String academicYear,
             @RequestParam(name = "q", required = false) String query) {
-        List<CourseOfferingDto> courses = courseOfferingService.listCourses(
-                principal.id(), department, semester, academicYear, query);
+        List<CourseOfferingDto> courses = yearTerm == null
+                ? courseOfferingService.listCourses(principal.id(), department, semester, academicYear, query)
+                : courseOfferingService.listCourses(principal.id(), department, semester, yearTerm, academicYear, query);
         return ResponseEntity.ok(ApiResponse.ok(courses));
     }
 

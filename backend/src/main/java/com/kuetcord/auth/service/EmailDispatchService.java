@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Sends institutional verification and CT Hub notification emails via Spring JavaMailSender
- * (Mailpit in local dev). Gracefully degrades to structured logging when SMTP transport is disabled.
+ * (Mailpit in local dev, Gmail/Brevo SMTP in production). Gracefully degrades to structured logging when SMTP transport is disabled.
  */
 @Slf4j
 @Service
@@ -18,12 +18,15 @@ public class EmailDispatchService {
 
     private final JavaMailSender mailSender;
     private final String frontendUrl;
+    private final String mailFrom;
 
     public EmailDispatchService(
             ObjectProvider<JavaMailSender> mailSenderProvider,
-            @Value("${kuetcord.frontend-url:http://localhost:5173}") String frontendUrl) {
+            @Value("${kuetcord.frontend-url:http://localhost:5173}") String frontendUrl,
+            @Value("${kuetcord.mail.from:noreply@kuetcord.local}") String mailFrom) {
         this.mailSender = mailSenderProvider.getIfAvailable();
         this.frontendUrl = frontendUrl;
+        this.mailFrom = mailFrom;
     }
 
     public void sendVerificationEmail(String recipientEmail, String displayName, String rawToken) {
@@ -63,7 +66,7 @@ public class EmailDispatchService {
 
         try {
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom("noreply@kuetcord.local");
+            message.setFrom(mailFrom);
             message.setTo(recipientEmail);
             message.setSubject(subject);
             message.setText(body);

@@ -1,5 +1,6 @@
 package com.kuetcord.cthub.service;
 
+import com.kuetcord.common.academic.YearTerm;
 import com.kuetcord.cthub.model.CourseOffering;
 import com.kuetcord.cthub.repository.CourseOfferingRepository;
 import jakarta.persistence.criteria.Predicate;
@@ -26,15 +27,28 @@ public class CourseCatalogCacheService {
     private final CourseOfferingRepository courseOfferingRepository;
 
     @Transactional(readOnly = true)
+    public List<CourseOffering> findCourses(String department, String semester, String academicYear, String query) {
+        return findCourses(department, semester, null, academicYear, query);
+    }
+
+    @Transactional(readOnly = true)
     @Cacheable(
             value = "course_offerings",
-            key = "(#department ?: '*') + '|' + (#semester ?: '*') + '|' + (#academicYear ?: '*') + '|' + (#query ?: '*')"
+            key = "(#department ?: '*') + '|' + (#semester ?: '*') + '|' + (#yearTerm ?: '*') + '|' + (#academicYear ?: '*') + '|' + (#query ?: '*')"
     )
-    public List<CourseOffering> findCourses(String department, String semester, String academicYear, String query) {
+    public List<CourseOffering> findCourses(
+            String department, String semester, String yearTerm, String academicYear, String query) {
+        String normalizedYearTerm = (yearTerm != null && !yearTerm.isBlank())
+                ? YearTerm.normalizeNullable(yearTerm)
+                : null;
+
         Specification<CourseOffering> spec = (root, cq, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (department != null && !department.isBlank()) {
                 predicates.add(cb.equal(cb.lower(root.get("department")), department.trim().toLowerCase(Locale.ROOT)));
+            }
+            if (normalizedYearTerm != null) {
+                predicates.add(cb.equal(root.get("yearTerm"), normalizedYearTerm));
             }
             if (semester != null && !semester.isBlank()) {
                 predicates.add(cb.equal(cb.lower(root.get("semester")), semester.trim().toLowerCase(Locale.ROOT)));

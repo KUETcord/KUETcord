@@ -1,11 +1,18 @@
 import type {
   AuthResponse,
+  CalendarEvent,
+  CalendarEventType,
   CourseFollowStatus,
   CourseOffering,
   CtEventDetail,
   CtEventSummary,
   CtStatus,
+  RoleName,
+  RoomAllocation,
   TeacherSummary,
+  TermFinalSchedule,
+  UpsertTermFinalSchedulePayload,
+  UserStatus,
   UserSummary,
 } from '../types/domain';
 
@@ -78,6 +85,18 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   return envelope ? envelope.data : (undefined as T);
 }
 
+export interface UpdateProfilePayload {
+  displayName?: string;
+  username?: string;
+  department?: string;
+  batch?: string;
+  yearTerm?: string;
+  rollNumber?: string;
+  bio?: string;
+  avatarUrl?: string;
+  clearAvatar?: boolean;
+}
+
 export const authApi = {
   register(payload: {
     email: string;
@@ -85,6 +104,9 @@ export const authApi = {
     displayName: string;
     department?: string;
     batch?: string;
+    yearTerm?: string;
+    rollNumber?: string;
+    bio?: string;
   }): Promise<UserSummary> {
     return request<UserSummary>('/auth/register', {
       method: 'POST',
@@ -124,9 +146,16 @@ export const authApi = {
     return request<UserSummary>('/me');
   },
 
-  updateMe(payload: { displayName?: string; department?: string; batch?: string }): Promise<UserSummary> {
+  updateMe(payload: UpdateProfilePayload): Promise<UserSummary> {
     return request<UserSummary>('/me', {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  changePassword(payload: { currentPassword?: string; newPassword: string }): Promise<void> {
+    return request<void>('/me/password', {
+      method: 'POST',
       body: JSON.stringify(payload),
     });
   },
@@ -136,12 +165,14 @@ export const ctHubApi = {
   listCourses(params?: {
     department?: string;
     semester?: string;
+    yearTerm?: string;
     academicYear?: string;
     q?: string;
   }): Promise<CourseOffering[]> {
     const qs = new URLSearchParams();
     if (params?.department) qs.set('department', params.department);
     if (params?.semester) qs.set('semester', params.semester);
+    if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
     if (params?.academicYear) qs.set('academicYear', params.academicYear);
     if (params?.q) qs.set('q', params.q);
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
@@ -163,12 +194,18 @@ export const ctHubApi = {
   listEvents(params?: {
     courseId?: number;
     status?: CtStatus | '';
+    department?: string;
+    yearTerm?: string;
+    batch?: string;
     from?: string;
     to?: string;
   }): Promise<CtEventSummary[]> {
     const qs = new URLSearchParams();
     if (params?.courseId) qs.set('courseId', String(params.courseId));
     if (params?.status) qs.set('status', params.status);
+    if (params?.department) qs.set('department', params.department);
+    if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
+    if (params?.batch) qs.set('batch', params.batch);
     if (params?.from) qs.set('from', params.from);
     if (params?.to) qs.set('to', params.to);
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
@@ -190,10 +227,16 @@ export const ctHubApi = {
   createEvent(payload: {
     courseOfferingId: number;
     teacherId: number;
+    coTeacherId?: number;
     title: string;
     scheduledAt: string;
     durationMinutes: number;
     coveredTopics?: string;
+    examRoom?: string;
+    roomAllocations?: RoomAllocation[];
+    targetBatch?: string;
+    targetDepartment?: string;
+    targetYearTerm?: string;
   }): Promise<CtEventSummary> {
     return request<CtEventSummary>('/ct/events', {
       method: 'POST',
@@ -210,7 +253,13 @@ export const ctHubApi = {
 
   rescheduleEvent(
     eventId: number,
-    payload: { newScheduledAt: string; reason: string; expectedVersion: number },
+    payload: {
+      newScheduledAt: string;
+      reason: string;
+      expectedVersion: number;
+      examRoom?: string;
+      roomAllocations?: RoomAllocation[];
+    },
   ): Promise<CtEventSummary> {
     return request<CtEventSummary>(`/ct/events/${eventId}/reschedule`, {
       method: 'POST',
@@ -225,6 +274,190 @@ export const ctHubApi = {
     return request<CtEventSummary>(`/ct/events/${eventId}/cancel`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+};
+
+export const adminApi = {
+  listCourses(params?: { department?: string; yearTerm?: string; q?: string }): Promise<CourseOffering[]> {
+    const qs = new URLSearchParams();
+    if (params?.department) qs.set('department', params.department);
+    if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
+    if (params?.q) qs.set('q', params.q);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<CourseOffering[]>(`/admin/courses${suffix}`);
+  },
+
+  createCourse(payload: {
+    courseCode: string;
+    courseTitle: string;
+    department: string;
+    yearTerm: string;
+    semester?: string;
+    academicYear: string;
+    targetBatch?: string;
+  }): Promise<CourseOffering> {
+    return request<CourseOffering>('/admin/courses', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateCourse(
+    courseId: number,
+    payload: {
+      courseCode: string;
+      courseTitle: string;
+      department: string;
+      yearTerm: string;
+      semester?: string;
+      academicYear: string;
+      targetBatch?: string;
+    },
+  ): Promise<CourseOffering> {
+    return request<CourseOffering>(`/admin/courses/${courseId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteCourse(courseId: number): Promise<void> {
+    return request<void>(`/admin/courses/${courseId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  listUsers(params?: {
+    role?: RoleName | '';
+    department?: string;
+    yearTerm?: string;
+    status?: UserStatus | '';
+    q?: string;
+  }): Promise<UserSummary[]> {
+    const qs = new URLSearchParams();
+    if (params?.role) qs.set('role', params.role);
+    if (params?.department) qs.set('department', params.department);
+    if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
+    if (params?.status) qs.set('status', params.status);
+    if (params?.q) qs.set('q', params.q);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<UserSummary[]>(`/admin/users${suffix}`);
+  },
+
+  createTeacher(payload: {
+    email: string;
+    displayName: string;
+    department: string;
+    bio?: string;
+    initialPassword: string;
+  }): Promise<UserSummary> {
+    return request<UserSummary>('/admin/users/teachers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  createUser(payload: {
+    email: string;
+    displayName: string;
+    department?: string;
+    batch?: string;
+    yearTerm?: string;
+    rollNumber?: string;
+    bio?: string;
+    initialPassword: string;
+    roles: RoleName[];
+  }): Promise<UserSummary> {
+    return request<UserSummary>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateUser(
+    userId: number,
+    payload: {
+      displayName?: string;
+      department?: string;
+      batch?: string;
+      yearTerm?: string;
+      rollNumber?: string;
+      bio?: string;
+      roles?: RoleName[];
+      status?: UserStatus;
+      resetPassword?: string;
+      emailVerified?: boolean;
+    },
+  ): Promise<UserSummary> {
+    return request<UserSummary>(`/admin/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteUser(userId: number): Promise<void> {
+    return request<void>(`/admin/users/${userId}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+export const calendarApi = {
+  listEvents(params?: {
+    types?: CalendarEventType[];
+    from?: string;
+    to?: string;
+    department?: string;
+    yearTerm?: string;
+    batch?: string;
+  }): Promise<CalendarEvent[]> {
+    const qs = new URLSearchParams();
+    if (params?.types && params.types.length > 0) {
+      qs.set('types', params.types.join(','));
+    }
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to) qs.set('to', params.to);
+    if (params?.department) qs.set('department', params.department);
+    if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
+    if (params?.batch) qs.set('batch', params.batch);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<CalendarEvent[]>(`/calendar/events${suffix}`);
+  },
+};
+
+export const termFinalApi = {
+  list(params?: {
+    department?: string;
+    yearTerm?: string;
+    batch?: string;
+    session?: string;
+  }): Promise<TermFinalSchedule[]> {
+    const qs = new URLSearchParams();
+    if (params?.department) qs.set('department', params.department);
+    if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
+    if (params?.batch) qs.set('batch', params.batch);
+    if (params?.session) qs.set('session', params.session);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<TermFinalSchedule[]>(`/term-finals${suffix}`);
+  },
+
+  create(payload: UpsertTermFinalSchedulePayload): Promise<TermFinalSchedule> {
+    return request<TermFinalSchedule>('/term-finals', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  update(scheduleId: number, payload: UpsertTermFinalSchedulePayload): Promise<TermFinalSchedule> {
+    return request<TermFinalSchedule>(`/term-finals/${scheduleId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  remove(scheduleId: number): Promise<void> {
+    return request<void>(`/term-finals/${scheduleId}`, {
+      method: 'DELETE',
     });
   },
 };

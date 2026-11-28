@@ -594,3 +594,29 @@ npm run test -- KanbanBoard.test.tsx TaskCard.test.tsx PomodoroTimer.test.tsx
   2. How JPA `@Version` prevents lost updates during collaborative task management.
   3. Why CT Hub and Contest & Challenge Board must remain separate modules.
 
+
+---
+
+## 11. Phase 7 Expansion — Academic Project Hub & Campus Pulse Year–Term / CR Notices
+
+> **Branch:** `feature/project-hub-and-pulse-yearterm` (targeting **`develop`** — never push directly to `main` or `develop`)  
+> **Flyway Migration:** `V18__project_hub_and_pulse_year_term.sql` (builds on Member A's `V16` `YearTerm` & `course_offerings.year_term`)
+
+### 11.1 Scope Owned by Member C
+1. **Academic Project Hub (`academic_projects` & `academic_project_history` in `V18`):**
+   - Dedicated academic sessional/course **Project Hub** (`/course-projects` & `/api/v1/course-projects`), distinct from open hackathon Playgrounds (`/playgrounds`) while optionally linking to one via `linked_playground_id BIGINT REFERENCES playgrounds(id) ON DELETE SET NULL`.
+   - Columns: `id`, `course_offering_id` (FK), `title`, `description`, `due_at`, `demo_room VARCHAR(100)`, `team_size_min`, `team_size_max`, **`submission_link VARCHAR(500)`** (optional, validated `http(s)://`), **`submitted_list_link VARCHAR(500)`** (optional, validated `http(s)://`), `target_batch VARCHAR(20)`, `status` (`UNVERIFIED`, `VERIFIED`, `RESCHEDULED`, `CANCELLED`), `submitted_by`, `verified_by`, `assigned_teacher_id`, `linked_playground_id`, `version BIGINT NOT NULL DEFAULT 0` (JPA `@Version`).
+   - Full CT-Hub-style lifecycle: CR/Teacher proposal with `Year–Term` course selector & teacher search, assigned teacher approval (`POST /{id}/verify`), `@Version` 409-guarded reschedule/cancel, `PATCH /{id}/links` for `submissionLink` & `submittedListLink`, and `ProjectHubEventHandler` registered in `OutboxProcessor`.
+   - Frontend `/course-projects` (`ProjectHubPage.tsx`): **"My Batch (`e.g. 3-1 · CSE`)"** filter **active by default** (1-click toggle to `"All Terms"`), **Submit Project** (`submissionLink`) & **Submitted List** (`submittedListLink`) external pills, and **"Open Kanban Playground"** link when `linkedPlaygroundId` is set.
+2. **Campus Pulse (`announcements`) Year–Term Filtering & CR Batch Posting (`V18`):**
+   - Alter `announcements`: add `target_year_term VARCHAR(10)` (`NULL` = All Year–Terms, or `'1-1'`..`'4-2'`), `target_department VARCHAR(50)` (`NULL` = All Departments), `target_batch VARCHAR(20)`, and `author_role VARCHAR(30) NOT NULL DEFAULT 'STAFF'` (`'STAFF'` vs `'CR'`), plus `idx_announcements_scope (target_department, target_year_term, published_at DESC)`.
+   - Expand `POST /api/v1/announcements` to `@PreAuthorize("hasAnyRole('CR','TEACHER','MODERATOR','ADMIN')")`:
+     - **CRs (`ROLE_CR`):** Allowed to post batch-scoped notices (`targetYearTerm` and `targetDepartment` required; rendered with a `CR Notice` badge).
+     - **Teachers / Moderators / Admins:** Can target a specific `Year–Term` (`1-1`..`4-2`) / `Department` / `Batch` or `All Year–Terms` (`Official / Staff` badge).
+   - Frontend `/campus-pulse` (`CampusPulsePage.tsx`): **"My Batch (`e.g. 3-1 · CSE`)"** filter **active by default** for students with `yearTerm` set (matching their `yearTerm`/`department` plus campus-wide notices, with 1-click toggle to `"All Notices"`), and `Year–Term` + `Department` + `Batch` selectors in the Notice Composer for CRs, Teachers, Mods, and Admins.
+3. **Academic Calendar Sync (`CalendarEventProvider` SPI):**
+   - Implement `ProjectHubCalendarEventProvider implements CalendarEventProvider` returning `PROJECT` (Project Showcase) items (filtered by `from`, `to`, `yearTerm`, `department`, `batch`) so Member A's Google Calendar-style `/calendar` tab automatically stays in sync with Project Hub deadlines (including `demoRoom`, `submissionLink`, `submittedListLink`, and Playground link).
+4. **Mandatory Cross-Department `target_department` + `target_year_term` & CR Own-Department Rule (Aligned with Member A `V19`):**
+   - **Cross-Department Courses in Project Hub:** Because KUET students frequently take sessional/course projects offered by another department (e.g., **CSE 1-1** students taking an **`EEE 1108`** lab project), `academic_projects` MUST include `target_department VARCHAR(16) NOT NULL` and `target_year_term VARCHAR(10)` (indexed on `(target_department, target_year_term, due_at)`).
+   - **Query & Calendar Filtering:** `GET /api/v1/course-projects?department=CSE&yearTerm=1-1` and `ProjectHubCalendarEventProvider` MUST filter and project by `target_department` and `target_year_term` (falling back to `course_offerings.year_term` only if `target_year_term` is null) — **never** by `course_offerings.department` alone. Render a `Cross-Dept` badge when `courseDepartment != targetDepartment`.
+   - **CR Own-Department Constraint (Project Hub & Campus Pulse):** CRs (`ROLE_CR` without `ROLE_ADMIN`/`ROLE_MODERATOR`) may pick courses from **any** KUET department in Project Hub, but MUST be restricted (HTTP `403 Forbidden`) to creating/updating Project Hub entries and Campus Pulse (`announcements`) notices strictly for their own `target_department == actor.department`. Teachers, Moderators, and Admins can target any department (or `All Departments` in Campus Pulse). Default the Department filter in Project Hub and Campus Pulse to the signed-in user's own department.

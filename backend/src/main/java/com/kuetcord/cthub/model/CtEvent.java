@@ -1,6 +1,7 @@
 package com.kuetcord.cthub.model;
 
 import com.kuetcord.auth.model.User;
+import com.kuetcord.cthub.dto.RoomAllocationDto;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,12 +21,16 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Class Test schedule entity protected by JPA {@code @Version} optimistic concurrency control
- * and transitioned via the CT Hub State Pattern.
+ * Class Test schedule entity protected by JPA {@code @Version} optimistic concurrency control,
+ * supporting multi-room roll-range allocations and up to 2 combined course teachers.
  */
 @Entity
 @Table(name = "ct_events")
@@ -54,6 +59,23 @@ public class CtEvent {
     @Column(name = "duration_minutes", nullable = false)
     private int durationMinutes = 45;
 
+    @Column(name = "exam_room", length = 255)
+    private String examRoom;
+
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "room_allocations", columnDefinition = "jsonb", nullable = false)
+    private List<RoomAllocationDto> roomAllocations = new ArrayList<>();
+
+    @Column(name = "target_department", nullable = false, length = 16)
+    private String targetDepartment;
+
+    @Column(name = "target_year_term", length = 10)
+    private String targetYearTerm;
+
+    @Column(name = "target_batch", length = 20)
+    private String targetBatch;
+
     @Column(name = "covered_topics", columnDefinition = "TEXT")
     private String coveredTopics;
 
@@ -73,6 +95,10 @@ public class CtEvent {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_teacher_id")
     private User assignedTeacher;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "co_teacher_id")
+    private User coTeacher;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -99,10 +125,28 @@ public class CtEvent {
         if (this.durationMinutes <= 0) {
             this.durationMinutes = 45;
         }
+        if (this.roomAllocations == null) {
+            this.roomAllocations = new ArrayList<>();
+        }
+        if ((this.targetDepartment == null || this.targetDepartment.isBlank()) && this.courseOffering != null) {
+            this.targetDepartment = this.courseOffering.getDepartment();
+        }
+        if ((this.targetYearTerm == null || this.targetYearTerm.isBlank()) && this.courseOffering != null) {
+            this.targetYearTerm = this.courseOffering.getYearTerm();
+        }
     }
 
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = Instant.now();
+        if (this.roomAllocations == null) {
+            this.roomAllocations = new ArrayList<>();
+        }
+        if ((this.targetDepartment == null || this.targetDepartment.isBlank()) && this.courseOffering != null) {
+            this.targetDepartment = this.courseOffering.getDepartment();
+        }
+        if ((this.targetYearTerm == null || this.targetYearTerm.isBlank()) && this.courseOffering != null) {
+            this.targetYearTerm = this.courseOffering.getYearTerm();
+        }
     }
 }

@@ -9,15 +9,9 @@ import java.util.Set;
 /**
  * Member A ↔ Member B Cross-Module Outbox Handler.
  * <p>
- * Translates CT Hub transactional outbox events emitted by {@code CtEventService} into
- * persisted inbox notifications (and post-commit STOMP pushes) via Member B's
- * {@link OutboxProcessor} {@code SKIP LOCKED} worker:
- * <ul>
- *   <li>{@code CT_APPROVAL_REQUESTED} → notifies the assigned KUET course teacher.</li>
- *   <li>{@code CT_VERIFIED} → notifies all course followers (excluding the approving actor).</li>
- *   <li>{@code CT_RESCHEDULED} / {@code CT_CANCELLED} → notifies all course followers and,
- *       when {@code notifyTeacher} is {@code true}, the assigned teacher (deduplicated, excluding actor).</li>
- * </ul>
+ * Translates CT Hub transactional outbox events (supporting 1 or 2 combined course teachers
+ * and multi-room summaries) into persisted inbox notifications via Member B's
+ * {@link OutboxProcessor} {@code SKIP LOCKED} worker.
  */
 @Component
 public class CtHubEventHandler implements OutboxEventHandler {
@@ -52,27 +46,37 @@ public class CtHubEventHandler implements OutboxEventHandler {
 
     private List<NotificationDraft> approvalRequested(ClaimedOutboxEvent event) {
         Long ctEventId = event.requireLong("ctEventId");
-        Long teacherId = event.optionalLong("teacherId");
         Long submittedById = event.optionalLong("submittedById");
-        if (teacherId == null || teacherId.equals(submittedById)) {
+
+        Set<Long> teacherRecipients = collectTeacherIds(event);
+        if (submittedById != null) {
+            teacherRecipients.remove(submittedById);
+        }
+        if (teacherRecipients.isEmpty()) {
             return List.of();
         }
 
         String title = "CT approval requested: " + safeText(event.text("title"), "Upcoming CT");
         String submittedBy = event.text("submittedByName");
-        String preview = joinNonBlank(
+        String examRoom = event.text("examRoom");
+        String head = joinNonBlank(
                 event.text("courseCode"),
+                examRoom == null || examRoom.isBlank() ? null : "Room " + examRoom
+        );
+        String preview = joinNonBlank(
+                head,
                 submittedBy == null || submittedBy.isBlank() ? null : "Proposed by " + submittedBy
         );
 
-        return List.of(new NotificationDraft(
-                teacherId,
-                CT_APPROVAL_REQUESTED,
-                title,
-                preview,
-                TARGET_CT_EVENT,
-                ctEventId
-        ));
+        return teacherRecipients.stream()
+                .map(teacherId -> new NotificationDraft(
+                        teacherId,
+                        CT_APPROVAL_REQUESTED,
+                        title,
+                        preview,
+                        TARGET_CT_EVENT,
+                        ctEventId))
+                .toList();
     }
 
     private List<NotificationDraft> lifecycleUpdate(ClaimedOutboxEvent event, String titlePrefix) {
@@ -81,9 +85,8 @@ public class CtHubEventHandler implements OutboxEventHandler {
 
         Set<Long> recipients = new LinkedHashSet<>(event.optionalLongList("followerUserIds"));
         boolean notifyTeacher = Boolean.TRUE.equals(event.payload().get("notifyTeacher"));
-        Long teacherId = event.optionalLong("teacherId");
-        if (notifyTeacher && teacherId != null) {
-            recipients.add(teacherId);
+        if (notifyTeacher) {
+            recipients.addAll(collectTeacherIds(event));
         }
         if (actorId != null) {
             recipients.remove(actorId);
@@ -94,7 +97,12 @@ public class CtHubEventHandler implements OutboxEventHandler {
         }
 
         String title = titlePrefix + safeText(event.text("title"), "CT Update");
-        String preview = joinNonBlank(event.text("courseCode"), event.text("reason"));
+        String examRoom = event.text("examRoom");
+        String head = joinNonBlank(
+                event.text("courseCode"),
+                examRoom == null || examRoom.isBlank() ? null : "Room " + examRoom
+        );
+        String preview = joinNonBlank(head, event.text("reason"));
 
         return recipients.stream()
                 .map(recipientId -> new NotificationDraft(
@@ -105,6 +113,19 @@ public class CtHubEventHandler implements OutboxEventHandler {
                         TARGET_CT_EVENT,
                         ctEventId))
                 .toList();
+    }
+
+    private static Set<Long> collectTeacherIds(ClaimedOutboxEvent event) {
+        Set<Long> ids = new LinkedHashSet<>(event.optionalLongList("teacherIds"));
+        Long primary = event.optionalLong("teacherId");
+        if (primary != null) {
+            ids.add(primary);
+        }
+        Long coTeacher = event.optionalLong("coTeacherId");
+        if (coTeacher != null) {
+            ids.add(coTeacher);
+        }
+        return ids;
     }
 
     private static String safeText(String value, String fallback) {

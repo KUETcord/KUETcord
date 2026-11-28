@@ -5,6 +5,7 @@ import {
   BellOff,
   CalendarPlus,
   Filter,
+  GraduationCap,
   Search,
   Sparkles,
 } from 'lucide-react';
@@ -23,7 +24,8 @@ import {
 } from '../fixtures/ctHubFixtures';
 import { ApiError, ctHubApi } from '../lib/api';
 import { cn, pluralize } from '../lib/format';
-import type { CourseOffering, CtEventSummary, CtStatus } from '../types/domain';
+import { KUET_DEPARTMENTS, resolveYearTerm, YEAR_TERM_OPTIONS } from '../lib/yearTerm';
+import type { CourseOffering, CtEventSummary, CtStatus, RoomAllocation } from '../types/domain';
 
 const STATUS_OPTIONS: Array<{ value: '' | CtStatus; label: string }> = [
   { value: '', label: 'All statuses' },
@@ -45,11 +47,21 @@ export function CtHubPage() {
   const [courses, setCourses] = useState<CourseOffering[]>(DEMO_COURSES);
   const [events, setEvents] = useState<CtEventSummary[]>(DEMO_CT_EVENTS);
 
-  // Filters
-  const [departmentFilter, setDepartmentFilter] = useState<string>('');
+  // Filters — "My Batch (e.g. 3-2 · CSE)" is active by default when student/CR has yearTerm set
+  const hasStudentBatchScope = Boolean(user?.yearTerm);
+  const [myBatchOnly, setMyBatchOnly] = useState<boolean>(hasStudentBatchScope);
+  const [departmentFilter, setDepartmentFilter] = useState<string>(user?.department ?? '');
+  const [yearTermFilter, setYearTermFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'' | CtStatus>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+
+  useEffect(() => {
+    setMyBatchOnly(Boolean(user?.yearTerm));
+    if (user?.department) {
+      setDepartmentFilter(user.department);
+    }
+  }, [user?.id, user?.yearTerm, user?.department]);
 
   // Modals & action state
   const [proposeOpen, setProposeOpen] = useState(false);
@@ -95,12 +107,17 @@ export function CtHubPage() {
   }, [loadData]);
 
   const departments = useMemo(() => {
-    return Array.from(new Set(courses.map((c) => c.department))).sort();
+    return Array.from(new Set([...KUET_DEPARTMENTS, ...courses.map((c) => c.department)])).sort();
   }, [courses]);
+
+  const effectiveDepartment = myBatchOnly && user?.department ? user.department : departmentFilter;
+  const effectiveYearTerm = myBatchOnly && user?.yearTerm ? user.yearTerm : yearTermFilter;
 
   const filteredCourses = useMemo(() => {
     return courses.filter((course) => {
-      if (departmentFilter && course.department !== departmentFilter) return false;
+      const cYt = resolveYearTerm(course.yearTerm, course.semester);
+      if (effectiveDepartment && course.department !== effectiveDepartment) return false;
+      if (effectiveYearTerm && cYt !== effectiveYearTerm) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
         return (
@@ -110,28 +127,45 @@ export function CtHubPage() {
       }
       return true;
     });
-  }, [courses, departmentFilter, searchQuery]);
+  }, [courses, effectiveDepartment, effectiveYearTerm, searchQuery]);
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
       if (selectedCourseId && ev.courseOfferingId !== selectedCourseId) return false;
       if (statusFilter && ev.status !== statusFilter) return false;
-      if (departmentFilter) {
-        const matchCourse = courses.find((c) => c.id === ev.courseOfferingId);
-        if (matchCourse && matchCourse.department !== departmentFilter) return false;
-      }
+
+      const matchCourse = courses.find((c) => c.id === ev.courseOfferingId);
+      const evDept = ev.targetDepartment ?? ev.courseDepartment ?? matchCourse?.department ?? null;
+      const evYt = resolveYearTerm(
+        ev.targetYearTerm ?? ev.courseYearTerm ?? matchCourse?.yearTerm,
+        matchCourse?.semester,
+      );
+
+      if (effectiveDepartment && evDept && evDept !== effectiveDepartment) return false;
+      if (effectiveYearTerm && evYt && evYt !== effectiveYearTerm) return false;
+
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
         return (
           ev.title.toLowerCase().includes(q) ||
           ev.courseCode.toLowerCase().includes(q) ||
           ev.courseTitle.toLowerCase().includes(q) ||
-          (ev.assignedTeacherName?.toLowerCase().includes(q) ?? false)
+          (ev.examRoom?.toLowerCase().includes(q) ?? false) ||
+          (ev.assignedTeacherName?.toLowerCase().includes(q) ?? false) ||
+          (ev.coTeacherName?.toLowerCase().includes(q) ?? false)
         );
       }
       return true;
     });
-  }, [events, selectedCourseId, statusFilter, departmentFilter, searchQuery, courses]);
+  }, [
+    events,
+    selectedCourseId,
+    statusFilter,
+    effectiveDepartment,
+    effectiveYearTerm,
+    searchQuery,
+    courses,
+  ]);
 
   const handleToggleFollow = async (course: CourseOffering) => {
     const nextFollowed = !course.followed;
@@ -168,11 +202,29 @@ export function CtHubPage() {
     courseOfferingId: number;
     teacherId: number;
     teacherName: string;
+    coTeacherId?: number;
+    coTeacherName?: string;
     title: string;
     scheduledAt: string;
     durationMinutes: number;
+    roomAllocations?: RoomAllocation[];
     coveredTopics?: string;
+    targetDepartment?: string;
+    targetYearTerm?: string;
   }) => {
+    const teacherDisplay = payload.coTeacherName
+      ? `${payload.teacherName} & ${payload.coTeacherName}`
+      : payload.teacherName;
+    const summaryRoom = payload.roomAllocations?.length
+      ? payload.roomAllocations
+          .map((a) =>
+            a.rollStart !== null && a.rollEnd !== null
+              ? `${a.room} (${a.rollStart}-${a.rollEnd})`
+              : a.room,
+          )
+          .join(', ')
+      : null;
+
     if (isDemoMode) {
       const course = courses.find((c) => c.id === payload.courseOfferingId) ?? courses[0];
       const newEvent: CtEventSummary = {
@@ -180,15 +232,23 @@ export function CtHubPage() {
         courseOfferingId: course.id,
         courseCode: course.courseCode,
         courseTitle: course.courseTitle,
+        courseDepartment: course.department,
+        courseYearTerm: resolveYearTerm(course.yearTerm, course.semester),
+        targetDepartment: payload.targetDepartment ?? user?.department ?? course.department,
+        targetYearTerm: payload.targetYearTerm ?? resolveYearTerm(course.yearTerm, course.semester),
         title: payload.title,
         scheduledAt: payload.scheduledAt,
         durationMinutes: payload.durationMinutes,
+        examRoom: summaryRoom,
+        roomAllocations: payload.roomAllocations ?? [],
         coveredTopics: payload.coveredTopics ?? null,
         status: 'UNVERIFIED',
         submittedById: user?.id ?? 2,
         submittedByName: user?.displayName ?? 'Karim Rahman',
         assignedTeacherId: payload.teacherId,
         assignedTeacherName: payload.teacherName,
+        coTeacherId: payload.coTeacherId ?? null,
+        coTeacherName: payload.coTeacherName ?? null,
         verifiedById: null,
         verifiedByName: null,
         version: 0,
@@ -196,20 +256,24 @@ export function CtHubPage() {
         updatedAt: new Date().toISOString(),
       };
       setEvents((prev) => [newEvent, ...prev]);
-      toast.success(`CT proposed and ${payload.teacherName} notified for approval`);
+      toast.success(`CT proposed and ${teacherDisplay} notified for approval`);
       return;
     }
 
     const created = await ctHubApi.createEvent({
       courseOfferingId: payload.courseOfferingId,
       teacherId: payload.teacherId,
+      coTeacherId: payload.coTeacherId,
       title: payload.title,
       scheduledAt: payload.scheduledAt,
       durationMinutes: payload.durationMinutes,
+      roomAllocations: payload.roomAllocations,
       coveredTopics: payload.coveredTopics,
+      targetDepartment: payload.targetDepartment,
+      targetYearTerm: payload.targetYearTerm,
     });
     setEvents((prev) => [created, ...prev]);
-    toast.success(`CT proposed and ${payload.teacherName} notified for approval`);
+    toast.success(`CT proposed and ${teacherDisplay} notified for approval`);
   };
 
   const handleVerify = async (event: CtEventSummary) => {
@@ -250,22 +314,39 @@ export function CtHubPage() {
 
   const handleReschedule = async (
     event: CtEventSummary,
-    payload: { newScheduledAt: string; reason: string; expectedVersion: number },
+    payload: {
+      newScheduledAt: string;
+      reason: string;
+      expectedVersion: number;
+      roomAllocations?: RoomAllocation[];
+    },
   ) => {
     setConflictBanner(null);
     const notifyNote =
       user?.globalRole === 'CR' && event.assignedTeacherName
-        ? ` — ${event.assignedTeacherName} notified`
+        ? ` — ${event.coTeacherName ? `${event.assignedTeacherName} & ${event.coTeacherName}` : event.assignedTeacherName} notified`
         : '';
 
     try {
       if (isDemoMode) {
+        const nextRoomSummary = payload.roomAllocations?.length
+          ? payload.roomAllocations
+              .map((a) =>
+                a.rollStart !== null && a.rollEnd !== null
+                  ? `${a.room} (${a.rollStart}-${a.rollEnd})`
+                  : a.room,
+              )
+              .join(', ')
+          : null;
         setEvents((prev) =>
           prev.map((e) =>
             e.id === event.id
               ? {
                   ...e,
                   scheduledAt: payload.newScheduledAt,
+                  roomAllocations: payload.roomAllocations ?? e.roomAllocations,
+                  examRoom:
+                    payload.roomAllocations !== undefined ? nextRoomSummary : e.examRoom,
                   status: 'RESCHEDULED',
                   version: e.version + 1,
                 }
@@ -339,7 +420,7 @@ export function CtHubPage() {
             Class Test Hub
           </h2>
           <p className="mt-1 max-w-[65ch] text-sm leading-relaxed text-slate-400">
-            CRs propose Class Tests and assign course teachers; teachers approve schedules and receive automatic notifications on updates.
+            CRs propose Class Tests with exam rooms and assign course teachers; teachers approve schedules and students filter directly by their Year–Term batch.
           </p>
         </div>
 
@@ -348,7 +429,7 @@ export function CtHubPage() {
             type="button"
             onClick={() => setProposeOpen(true)}
             disabled={courses.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-950/50 transition-colors duration-150 ease-out hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-950/50 transition-[background-color,transform] duration-100 ease-out hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
           >
             <CalendarPlus className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>Propose CT</span>
@@ -356,12 +437,52 @@ export function CtHubPage() {
         )}
       </div>
 
+      {/* Smart "My Batch (Year-Term · Dept)" Default Toggle */}
+      {user?.yearTerm && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={myBatchOnly}
+            onClick={() => setMyBatchOnly(true)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-[background-color,border-color,transform] duration-100 ease-out active:scale-[0.97]',
+              myBatchOnly
+                ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
+                : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:text-slate-200',
+            )}
+          >
+            <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="tabular-nums">
+              My Batch ({user.yearTerm}
+              {user.department ? ` · ${user.department}` : ''})
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-pressed={!myBatchOnly}
+            onClick={() => {
+              setMyBatchOnly(false);
+              setDepartmentFilter('');
+              setYearTermFilter('');
+            }}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs font-medium transition-[background-color,border-color,transform] duration-100 ease-out active:scale-[0.97]',
+              !myBatchOnly
+                ? 'border-sky-500/50 bg-sky-500/15 text-sky-200'
+                : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:text-slate-200',
+            )}
+          >
+            All Terms
+          </button>
+        </div>
+      )}
+
       {/* Filter Bar */}
       <section
         aria-label="Filter CT Hub"
         className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 md:grid-cols-12"
       >
-        <div className="relative md:col-span-5">
+        <div className="relative md:col-span-4">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
             aria-hidden="true"
@@ -370,16 +491,19 @@ export function CtHubPage() {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search course code, title, or teacher..."
+            placeholder="Search course, room, or teacher..."
             className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
           />
         </div>
 
-        <div className="md:col-span-3">
+        <div className="md:col-span-2">
           <select
             aria-label="Filter by department"
-            value={departmentFilter}
-            onChange={(e) => setDepartmentFilter(e.target.value)}
+            value={effectiveDepartment}
+            onChange={(e) => {
+              setMyBatchOnly(false);
+              setDepartmentFilter(e.target.value);
+            }}
             className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
           >
             <option value="">All departments</option>
@@ -391,7 +515,26 @@ export function CtHubPage() {
           </select>
         </div>
 
-        <div className="md:col-span-4">
+        <div className="md:col-span-3">
+          <select
+            aria-label="Filter by Year-Term"
+            value={effectiveYearTerm}
+            onChange={(e) => {
+              setMyBatchOnly(false);
+              setYearTermFilter(e.target.value);
+            }}
+            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="">All Year–Terms</option>
+            {YEAR_TERM_OPTIONS.map((yt) => (
+              <option key={yt.code} value={yt.code}>
+                {yt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="md:col-span-3">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-slate-500 shrink-0" aria-hidden="true" />
             <select
@@ -430,6 +573,7 @@ export function CtHubPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredCourses.map((course) => {
             const isSelected = selectedCourseId === course.id;
+            const cYt = resolveYearTerm(course.yearTerm, course.semester) ?? course.semester;
             return (
               <div
                 key={course.id}
@@ -450,7 +594,7 @@ export function CtHubPage() {
                       {course.courseCode}
                     </span>
                     <span className="text-[11px] text-slate-500 tabular-nums">
-                      {course.department} • {course.semester}
+                      {course.department} • {cYt}
                     </span>
                   </div>
                   <p
@@ -466,7 +610,7 @@ export function CtHubPage() {
                   aria-label={course.followed ? `Unfollow ${course.courseCode}` : `Follow ${course.courseCode}`}
                   onClick={() => handleToggleFollow(course)}
                   className={cn(
-                    'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors duration-150 ease-out shrink-0',
+                    'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-[background-color,transform] duration-100 ease-out active:scale-[0.97] shrink-0',
                     course.followed
                       ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
                       : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700',
@@ -526,6 +670,7 @@ export function CtHubPage() {
                 event={ev}
                 currentUserId={user?.id ?? null}
                 currentUserRole={user?.globalRole ?? null}
+                currentUserRollNumber={user?.rollNumber ?? null}
                 canApprove={canApproveCt}
                 canRescheduleOrCancel={canRescheduleOrCancelCt}
                 verifyingId={verifyingId}
@@ -546,6 +691,13 @@ export function CtHubPage() {
         open={proposeOpen}
         onOpenChange={setProposeOpen}
         courses={courses}
+        defaultYearTerm={user?.yearTerm ?? null}
+        defaultDepartment={user?.department ?? null}
+        isCrOnly={
+          user?.globalRole === 'CR' &&
+          !user.roles.includes('ROLE_ADMIN') &&
+          !user.roles.includes('ROLE_MODERATOR')
+        }
         demoTeachers={demoTeachers}
         isDemoMode={isDemoMode}
         onSubmit={handleCreateEvent}

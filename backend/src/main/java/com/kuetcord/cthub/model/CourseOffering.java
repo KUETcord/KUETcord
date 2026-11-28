@@ -47,6 +47,13 @@ public class CourseOffering {
     @Column(name = "semester", nullable = false, length = 20)
     private String semester;
 
+    @Builder.Default
+    @Column(name = "year_term", nullable = false, length = 10)
+    private String yearTerm = "3-1";
+
+    @Column(name = "target_batch", length = 20)
+    private String targetBatch;
+
     @Column(name = "academic_year", nullable = false, length = 10)
     private String academicYear;
 
@@ -57,6 +64,9 @@ public class CourseOffering {
     protected void onCreate() {
         if (this.createdAt == null) {
             this.createdAt = Instant.now();
+        }
+        if (this.yearTerm == null || this.yearTerm.isBlank()) {
+            this.yearTerm = "3-1";
         }
     }
 }
