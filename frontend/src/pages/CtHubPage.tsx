@@ -16,6 +16,8 @@ import { extractErrorMessage, useAuth } from '../context/AuthContext';
 import {
   DEMO_COURSES,
   DEMO_CT_EVENTS,
+  DEMO_LABTEST_EVENTS,
+  DEMO_QUIZ_EVENTS,
   DEMO_TEACHERS,
   WORST_CASE_COURSES,
   WORST_CASE_CT_EVENTS,
@@ -25,7 +27,81 @@ import {
 import { ApiError, ctHubApi } from '../lib/api';
 import { cn, pluralize } from '../lib/format';
 import { KUET_DEPARTMENTS, resolveYearTerm, YEAR_TERM_OPTIONS } from '../lib/yearTerm';
-import type { CourseOffering, CtEventSummary, CtStatus, RoomAllocation } from '../types/domain';
+import type {
+  AssessmentType,
+  CourseOffering,
+  CtEventSummary,
+  CtStatus,
+  RoomAllocation,
+} from '../types/domain';
+
+const HUB_CONFIG: Record<
+  AssessmentType,
+  {
+    heading: string;
+    badge: string;
+    badgeClass: string;
+    subtitle: string;
+    ctaLabel: string;
+    emptyCtaLabel: string;
+    scheduleLabel: string;
+    singular: string;
+    plural: string;
+    emptyHeading: string;
+    filterAriaLabel: string;
+    scheduleAriaLabel: string;
+    demoEvents: CtEventSummary[];
+  }
+> = {
+  CT: {
+    heading: 'Class Test Hub',
+    badge: 'Class Tests',
+    badgeClass: 'border-emerald-500/30 bg-emerald-500/15 text-emerald-300',
+    subtitle:
+      'CRs propose Class Tests with exam rooms and assign course teachers; teachers approve schedules and students filter directly by their Year–Term batch.',
+    ctaLabel: 'Propose CT',
+    emptyCtaLabel: 'Propose First CT',
+    scheduleLabel: 'Class Test Schedule',
+    singular: 'CT',
+    plural: 'CTs',
+    emptyHeading: 'No upcoming Class Tests scheduled',
+    filterAriaLabel: 'Filter CT Hub',
+    scheduleAriaLabel: 'Upcoming Class Tests',
+    demoEvents: DEMO_CT_EVENTS,
+  },
+  LABTEST: {
+    heading: 'Labtest Hub',
+    badge: 'Sessional Lab Tests',
+    badgeClass: 'border-cyan-500/30 bg-cyan-500/15 text-cyan-300',
+    subtitle:
+      'CRs propose sessional Lab Tests with lab room roll ranges and assign course teachers; teachers approve schedules and students filter directly by their Year–Term batch.',
+    ctaLabel: 'Propose Lab Test',
+    emptyCtaLabel: 'Propose First Lab Test',
+    scheduleLabel: 'Lab Test Schedule',
+    singular: 'Lab Test',
+    plural: 'Lab Tests',
+    emptyHeading: 'No upcoming Lab Tests scheduled',
+    filterAriaLabel: 'Filter Labtest Hub',
+    scheduleAriaLabel: 'Upcoming Lab Tests',
+    demoEvents: DEMO_LABTEST_EVENTS,
+  },
+  QUIZ: {
+    heading: 'Quiz Hub',
+    badge: 'Quizzes',
+    badgeClass: 'border-amber-500/30 bg-amber-500/15 text-amber-300',
+    subtitle:
+      'CRs propose in-class Quizzes with exam rooms and assign course teachers; teachers approve schedules and students filter directly by their Year–Term batch.',
+    ctaLabel: 'Propose Quiz',
+    emptyCtaLabel: 'Propose First Quiz',
+    scheduleLabel: 'Quiz Schedule',
+    singular: 'Quiz',
+    plural: 'Quizzes',
+    emptyHeading: 'No upcoming Quizzes scheduled',
+    filterAriaLabel: 'Filter Quiz Hub',
+    scheduleAriaLabel: 'Upcoming Quizzes',
+    demoEvents: DEMO_QUIZ_EVENTS,
+  },
+};
 
 const STATUS_OPTIONS: Array<{ value: '' | CtStatus; label: string }> = [
   { value: '', label: 'All statuses' },
@@ -35,7 +111,8 @@ const STATUS_OPTIONS: Array<{ value: '' | CtStatus; label: string }> = [
   { value: 'CANCELLED', label: 'Cancelled' },
 ];
 
-export function CtHubPage() {
+export function CtHubPage({ assessmentType = 'CT' }: { assessmentType?: AssessmentType }) {
+  const config = HUB_CONFIG[assessmentType];
   const { user, isDemoMode, canProposeCt, canApproveCt, canRescheduleOrCancelCt } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -45,7 +122,7 @@ export function CtHubPage() {
   );
 
   const [courses, setCourses] = useState<CourseOffering[]>(DEMO_COURSES);
-  const [events, setEvents] = useState<CtEventSummary[]>(DEMO_CT_EVENTS);
+  const [events, setEvents] = useState<CtEventSummary[]>(config.demoEvents);
 
   // Filters — "My Batch (e.g. 3-2 · CSE)" is active by default when student/CR has yearTerm set
   const hasStudentBatchScope = Boolean(user?.yearTerm);
@@ -74,18 +151,19 @@ export function CtHubPage() {
 
   const loadData = useCallback(async () => {
     if (isDemoMode) {
+      const baseEvents = HUB_CONFIG[assessmentType].demoEvents;
       if (fixtureMode === 'worst') {
         setCourses(WORST_CASE_COURSES);
-        setEvents(WORST_CASE_CT_EVENTS);
+        setEvents(assessmentType === 'CT' ? WORST_CASE_CT_EVENTS : baseEvents);
       } else if (fixtureMode === 'empty') {
         setCourses(DEMO_COURSES);
         setEvents([]);
       } else if (fixtureMode === 'one') {
         setCourses([DEMO_COURSES[0]]);
-        setEvents([DEMO_CT_EVENTS[0]]);
+        setEvents(baseEvents.length > 0 ? [baseEvents[0]] : []);
       } else {
         setCourses(DEMO_COURSES);
-        setEvents(DEMO_CT_EVENTS);
+        setEvents(baseEvents);
       }
       return;
     }
@@ -93,14 +171,14 @@ export function CtHubPage() {
     try {
       const [fetchedCourses, fetchedEvents] = await Promise.all([
         ctHubApi.listCourses(),
-        ctHubApi.listEvents(),
+        ctHubApi.listEvents({ assessmentType }),
       ]);
       setCourses(fetchedCourses);
       setEvents(fetchedEvents);
     } catch (err) {
-      toast.error(extractErrorMessage(err, 'Could not load CT Hub data from server'));
+      toast.error(extractErrorMessage(err, `Could not load ${HUB_CONFIG[assessmentType].heading} data from server`));
     }
-  }, [isDemoMode, fixtureMode]);
+  }, [isDemoMode, fixtureMode, assessmentType]);
 
   useEffect(() => {
     void loadData();
@@ -131,6 +209,7 @@ export function CtHubPage() {
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
+      if ((ev.assessmentType ?? 'CT') !== assessmentType) return false;
       if (selectedCourseId && ev.courseOfferingId !== selectedCourseId) return false;
       if (statusFilter && ev.status !== statusFilter) return false;
 
@@ -159,6 +238,7 @@ export function CtHubPage() {
     });
   }, [
     events,
+    assessmentType,
     selectedCourseId,
     statusFilter,
     effectiveDepartment,
@@ -211,7 +291,9 @@ export function CtHubPage() {
     coveredTopics?: string;
     targetDepartment?: string;
     targetYearTerm?: string;
+    assessmentType?: AssessmentType;
   }) => {
+    const effectiveType = payload.assessmentType ?? assessmentType;
     const teacherDisplay = payload.coTeacherName
       ? `${payload.teacherName} & ${payload.coTeacherName}`
       : payload.teacherName;
@@ -236,6 +318,7 @@ export function CtHubPage() {
         courseYearTerm: resolveYearTerm(course.yearTerm, course.semester),
         targetDepartment: payload.targetDepartment ?? user?.department ?? course.department,
         targetYearTerm: payload.targetYearTerm ?? resolveYearTerm(course.yearTerm, course.semester),
+        assessmentType: effectiveType,
         title: payload.title,
         scheduledAt: payload.scheduledAt,
         durationMinutes: payload.durationMinutes,
@@ -256,7 +339,7 @@ export function CtHubPage() {
         updatedAt: new Date().toISOString(),
       };
       setEvents((prev) => [newEvent, ...prev]);
-      toast.success(`CT proposed and ${teacherDisplay} notified for approval`);
+      toast.success(`${config.singular} proposed and ${teacherDisplay} notified for approval`);
       return;
     }
 
@@ -271,9 +354,10 @@ export function CtHubPage() {
       coveredTopics: payload.coveredTopics,
       targetDepartment: payload.targetDepartment,
       targetYearTerm: payload.targetYearTerm,
+      assessmentType: effectiveType,
     });
     setEvents((prev) => [created, ...prev]);
-    toast.success(`CT proposed and ${teacherDisplay} notified for approval`);
+    toast.success(`${config.singular} proposed and ${teacherDisplay} notified for approval`);
   };
 
   const handleVerify = async (event: CtEventSummary) => {
@@ -416,11 +500,21 @@ export function CtHubPage() {
       {/* Page Heading */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Class Test Hub
-          </h2>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              {config.heading}
+            </h2>
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium',
+                config.badgeClass,
+              )}
+            >
+              {config.badge}
+            </span>
+          </div>
           <p className="mt-1 max-w-[65ch] text-sm leading-relaxed text-slate-400">
-            CRs propose Class Tests with exam rooms and assign course teachers; teachers approve schedules and students filter directly by their Year–Term batch.
+            {config.subtitle}
           </p>
         </div>
 
@@ -432,7 +526,7 @@ export function CtHubPage() {
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-950/50 transition-[background-color,transform] duration-100 ease-out hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
           >
             <CalendarPlus className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>Propose CT</span>
+            <span>{config.ctaLabel}</span>
           </button>
         )}
       </div>
@@ -479,7 +573,7 @@ export function CtHubPage() {
 
       {/* Filter Bar */}
       <section
-        aria-label="Filter CT Hub"
+        aria-label={config.filterAriaLabel}
         className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 md:grid-cols-12"
       >
         <div className="relative md:col-span-4">
@@ -634,11 +728,11 @@ export function CtHubPage() {
         </div>
       </section>
 
-      {/* CT Timeline */}
-      <section aria-label="Upcoming Class Tests" className="space-y-4">
+      {/* Assessment Timeline */}
+      <section aria-label={config.scheduleAriaLabel} className="space-y-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 tabular-nums">
-            Class Test Schedule ({pluralize(filteredEvents.length, 'CT', 'CTs')})
+            {config.scheduleLabel} ({pluralize(filteredEvents.length, config.singular, config.plural)})
           </h3>
         </div>
 
@@ -646,7 +740,7 @@ export function CtHubPage() {
           <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 px-6 py-12 text-center">
             <Sparkles className="mx-auto mb-3 h-8 w-8 text-slate-500" aria-hidden="true" />
             <h4 className="text-base font-semibold text-slate-200">
-              No upcoming Class Tests scheduled
+              {config.emptyHeading}
             </h4>
             <p className="mx-auto mt-1.5 max-w-[48ch] text-xs leading-relaxed text-slate-400">
               Follow a course above to receive instant alerts when course teachers approve new schedules.
@@ -658,7 +752,7 @@ export function CtHubPage() {
                 className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-500"
               >
                 <CalendarPlus className="h-3.5 w-3.5 shrink-0" />
-                <span>Propose First CT</span>
+                <span>{config.emptyCtaLabel}</span>
               </button>
             )}
           </div>
@@ -690,6 +784,7 @@ export function CtHubPage() {
       <ProposeCtModal
         open={proposeOpen}
         onOpenChange={setProposeOpen}
+        assessmentType={assessmentType}
         courses={courses}
         defaultYearTerm={user?.yearTerm ?? null}
         defaultDepartment={user?.department ?? null}

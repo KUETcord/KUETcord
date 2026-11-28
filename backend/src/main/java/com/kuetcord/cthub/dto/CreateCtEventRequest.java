@@ -1,5 +1,6 @@
 package com.kuetcord.cthub.dto;
 
+import com.kuetcord.cthub.model.AssessmentType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -46,7 +47,9 @@ public record CreateCtEventRequest(
         String targetDepartment,
 
         @Size(max = 10, message = "Target year-term must not exceed 10 characters")
-        String targetYearTerm
+        String targetYearTerm,
+
+        AssessmentType assessmentType
 ) {
     /** Backward-compatible 6-arg constructor for existing test suites. */
     public CreateCtEventRequest(
@@ -56,7 +59,7 @@ public record CreateCtEventRequest(
             Instant scheduledAt,
             Integer durationMinutes,
             String coveredTopics) {
-        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, null, null, null, null, null);
+        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, null, null, null, null, null, AssessmentType.CT);
     }
 
     /** Backward-compatible 8-arg constructor. */
@@ -69,7 +72,7 @@ public record CreateCtEventRequest(
             String coveredTopics,
             String examRoom,
             String targetBatch) {
-        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, examRoom, targetBatch, null, null, null);
+        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, examRoom, targetBatch, null, null, null, AssessmentType.CT);
     }
 
     /** Backward-compatible 10-arg constructor. */
@@ -85,6 +88,24 @@ public record CreateCtEventRequest(
             String targetBatch,
             List<RoomAllocationDto> roomAllocations) {
         this(courseOfferingId, teacherId, coTeacherId, title, scheduledAt, durationMinutes, coveredTopics,
-                examRoom, targetBatch, roomAllocations, null, null);
+                examRoom, targetBatch, roomAllocations, null, null, AssessmentType.CT);
+    }
+
+    /** Backward-compatible 12-arg constructor. */
+    public CreateCtEventRequest(
+            Long courseOfferingId,
+            Long teacherId,
+            Long coTeacherId,
+            String title,
+            Instant scheduledAt,
+            Integer durationMinutes,
+            String coveredTopics,
+            String examRoom,
+            String targetBatch,
+            List<RoomAllocationDto> roomAllocations,
+            String targetDepartment,
+            String targetYearTerm) {
+        this(courseOfferingId, teacherId, coTeacherId, title, scheduledAt, durationMinutes, coveredTopics,
+                examRoom, targetBatch, roomAllocations, targetDepartment, targetYearTerm, AssessmentType.CT);
     }
 }

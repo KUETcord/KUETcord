@@ -52,6 +52,11 @@ public class CtEvent {
     @Column(name = "title", nullable = false, length = 150)
     private String title;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "assessment_type", nullable = false, length = 20)
+    private AssessmentType assessmentType = AssessmentType.CT;
+
     @Column(name = "scheduled_at", nullable = false)
     private Instant scheduledAt;
 
@@ -121,6 +126,9 @@ public class CtEvent {
         }
         if (this.status == null) {
             this.status = CtStatus.UNVERIFIED;
+        }
+        if (this.assessmentType == null) {
+            this.assessmentType = AssessmentType.CT;
         }
         if (this.durationMinutes <= 0) {
             this.durationMinutes = 45;
