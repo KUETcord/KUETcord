@@ -7,6 +7,7 @@ import com.kuetcord.common.academic.YearTerm;
 import com.kuetcord.common.exception.BadRequestException;
 import com.kuetcord.common.exception.ForbiddenException;
 import com.kuetcord.common.exception.ResourceNotFoundException;
+import com.kuetcord.cthub.dto.RoomAllocationDto;
 import com.kuetcord.cthub.model.CourseOffering;
 import com.kuetcord.cthub.repository.CourseOfferingRepository;
 import com.kuetcord.termhub.dto.TermFinalScheduleDto;
@@ -46,6 +47,10 @@ public class TermFinalService {
         checkDeptAuthority(actor, dept);
         checkClockRange(req);
 
+        List<RoomAllocationDto> sanitizedAllocations = sanitizeRoomAllocations(req.roomAllocations());
+        String summaryRoom = RoomAllocationDto.summarize(sanitizedAllocations);
+        String effectiveRoom = summaryRoom != null ? summaryRoom : normalizeBlank(req.examRoom());
+
         TermFinalSchedule schedule = TermFinalSchedule.builder()
                 .title(req.title().trim())
                 .targetDepartment(dept)
@@ -54,6 +59,8 @@ public class TermFinalService {
                 .session(req.session().trim())
                 .examStartTime(req.examStartTime())
                 .examEndTime(req.examEndTime())
+                .examRoom(effectiveRoom)
+                .roomAllocations(sanitizedAllocations)
                 .createdBy(actor)
                 .build();
         schedule.replaceEntries(buildExamRows(req.entries()));
@@ -71,6 +78,10 @@ public class TermFinalService {
         checkDeptAuthority(actor, dept);
         checkClockRange(req);
 
+        List<RoomAllocationDto> sanitizedAllocations = sanitizeRoomAllocations(req.roomAllocations());
+        String summaryRoom = RoomAllocationDto.summarize(sanitizedAllocations);
+        String effectiveRoom = summaryRoom != null ? summaryRoom : normalizeBlank(req.examRoom());
+
         schedule.setTitle(req.title().trim());
         schedule.setTargetDepartment(dept);
         schedule.setYearTerm(YearTerm.normalizeNullable(req.yearTerm()));
@@ -78,6 +89,8 @@ public class TermFinalService {
         schedule.setSession(req.session().trim());
         schedule.setExamStartTime(req.examStartTime());
         schedule.setExamEndTime(req.examEndTime());
+        schedule.setExamRoom(effectiveRoom);
+        schedule.setRoomAllocations(sanitizedAllocations);
         schedule.replaceEntries(buildExamRows(req.entries()));
         return TermFinalScheduleDto.fromEntity(scheduleRepo.save(schedule));
     }
@@ -120,6 +133,26 @@ public class TermFinalService {
                     .build());
         }
         return mapped;
+    }
+
+    private List<RoomAllocationDto> sanitizeRoomAllocations(List<RoomAllocationDto> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<RoomAllocationDto> sanitized = new ArrayList<>();
+        for (RoomAllocationDto entry : raw) {
+            if (entry == null || entry.room() == null || entry.room().isBlank()) {
+                continue;
+            }
+            Integer start = entry.rollStart();
+            Integer end = entry.rollEnd();
+            if (start != null && end != null && start > end) {
+                throw new BadRequestException(
+                        "Invalid roll range for room " + entry.room().trim() + ": rollStart (" + start + ") must be <= rollEnd (" + end + ")");
+            }
+            sanitized.add(new RoomAllocationDto(start, end, entry.room().trim()));
+        }
+        return sanitized;
     }
 
     private void checkClockRange(UpsertTermFinalScheduleRequest req) {

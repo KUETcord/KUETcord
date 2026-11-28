@@ -23,7 +23,7 @@ describe('Term Hub (/term-hub)', () => {
     expect(computeDayOfWeek('')).toBe('—');
   });
 
-  it('renders My Batch default schedule with cross-dept badge and allows CR to upload a schedule with live auto-day calculation', () => {
+  it('renders My Batch default schedule with central multi-room roll ranges, highlights Your Room, and allows CR upload without per-course room inputs', () => {
     renderTermHub();
 
     expect(screen.getByRole('heading', { name: /Term Hub/i })).toBeInTheDocument();
@@ -36,14 +36,37 @@ describe('Term Hub (/term-hub)', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Cross-Dept \(EEE\)/i)).toBeInTheDocument();
 
+    // Central multi-room roll ranges render in the schedule header and highlight "Your Room" (roll 2007001 -> 1)
+    expect(screen.getByLabelText(/Central exam room arrangement/i)).toBeInTheDocument();
+    expect(screen.getByText('CSE-101')).toBeInTheDocument();
+    expect(screen.getByText('CSE-105')).toBeInTheDocument();
+    expect(screen.getByText('CSE-102')).toBeInTheDocument();
+    expect(screen.getByText(/Your Room/i)).toBeInTheDocument();
+
+    // Routine table has Countdown column and no per-course Exam Room column
+    expect(screen.getByRole('columnheader', { name: /Countdown/i })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Exam Room/i })).not.toBeInTheDocument();
+
     // Open Upload Schedule modal (default demo user is CR for CSE)
     fireEvent.click(screen.getByRole('button', { name: /Upload Schedule/i }));
     expect(screen.getByRole('heading', { name: /Upload Term Final Schedule/i })).toBeInTheDocument();
+
+    // No per-course room input exists in exam rows
+    expect(screen.queryByLabelText(/Exam row 1 room/i)).not.toBeInTheDocument();
 
     // CR target department is locked to CSE
     const deptSelect = screen.getByLabelText(/Target Department/i) as HTMLSelectElement;
     expect(deptSelect.value).toBe('CSE');
     expect(deptSelect).toBeDisabled();
+
+    // Configure central roll-range rooms
+    fireEvent.change(screen.getByLabelText(/Central room 1 name/i), {
+      target: { value: 'Academic-201' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Add Room/i }));
+    fireEvent.change(screen.getByLabelText(/Central room 2 name/i), {
+      target: { value: 'Academic-205' },
+    });
 
     // Fill title and exam row date -> live auto-day updates to Sunday
     fireEvent.change(screen.getByLabelText(/Schedule Title/i), {
@@ -64,5 +87,7 @@ describe('Term Hub (/term-hub)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Publish Term Schedule/i }));
     expect(screen.getByText(/1-1 Term Final Routine 2026/i)).toBeInTheDocument();
+    expect(screen.getByText('Academic-201')).toBeInTheDocument();
+    expect(screen.getByText('Academic-205')).toBeInTheDocument();
   });
 });

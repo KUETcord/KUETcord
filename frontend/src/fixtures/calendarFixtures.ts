@@ -128,7 +128,7 @@ export function buildDemoCalendarEvents(): CalendarEvent[] {
       startsAt: atOffsetDays(8, 3, 30),
       endsAt: atOffsetDays(8, 6, 30),
       durationMinutes: 180,
-      room: 'Academic Building 201',
+      room: 'CSE-101 (1-40), CSE-105 (41-80), CSE-102 (81-121)',
       status: 'SCHEDULED',
       assignedTeacherName: null,
       submissionLink: null,

@@ -1,6 +1,7 @@
 package com.kuetcord.termhub.model;
 
 import com.kuetcord.auth.model.User;
+import com.kuetcord.cthub.dto.RoomAllocationDto;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -20,6 +21,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.time.LocalTime;
@@ -64,6 +67,14 @@ public class TermFinalSchedule {
     @Column(name = "exam_end_time", nullable = false)
     private LocalTime examEndTime;
 
+    @Column(name = "exam_room", length = 255)
+    private String examRoom;
+
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "room_allocations", columnDefinition = "jsonb", nullable = false)
+    private List<RoomAllocationDto> roomAllocations = new ArrayList<>();
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "created_by", nullable = false)
     private User createdBy;
@@ -96,10 +107,16 @@ public class TermFinalSchedule {
         if (this.updatedAt == null) {
             this.updatedAt = now;
         }
+        if (this.roomAllocations == null) {
+            this.roomAllocations = new ArrayList<>();
+        }
     }
 
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = Instant.now();
+        if (this.roomAllocations == null) {
+            this.roomAllocations = new ArrayList<>();
+        }
     }
 }

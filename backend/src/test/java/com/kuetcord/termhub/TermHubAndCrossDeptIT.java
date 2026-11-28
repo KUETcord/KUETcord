@@ -12,6 +12,7 @@ import com.kuetcord.auth.service.JwtTokenService;
 import com.kuetcord.auth.service.PasswordService;
 import com.kuetcord.cthub.dto.CreateCourseOfferingRequest;
 import com.kuetcord.cthub.dto.CreateCtEventRequest;
+import com.kuetcord.cthub.dto.RoomAllocationDto;
 import com.kuetcord.termhub.dto.UpsertTermFinalScheduleRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -95,6 +96,13 @@ class TermHubAndCrossDeptIT {
                 .path("data").path("id").asLong();
 
         // 2026-07-12 is Sunday; 2026-07-15 is Wednesday
+        List<RoomAllocationDto> centralRooms = List.of(
+                new RoomAllocationDto(1, 40, "CSE-101"),
+                new RoomAllocationDto(41, 80, "CSE-105"),
+                new RoomAllocationDto(81, 121, "CSE-102")
+        );
+        String expectedRoomSummary = "CSE-101 (1-40), CSE-105 (41-80), CSE-102 (81-121)";
+
         UpsertTermFinalScheduleRequest cseScheduleReq = new UpsertTermFinalScheduleRequest(
                 "1-1 Term Final Routine " + suffix,
                 "CSE",
@@ -103,20 +111,22 @@ class TermHubAndCrossDeptIT {
                 "2025-2026",
                 LocalTime.of(9, 30),
                 LocalTime.of(12, 30),
+                null,
+                centralRooms,
                 List.of(
                         new UpsertTermFinalScheduleRequest.ExamRowRequest(
                                 LocalDate.of(2026, 7, 12),
                                 eeeCourseId,
                                 null,
                                 null,
-                                "Academic Building 201"
+                                null
                         ),
                         new UpsertTermFinalScheduleRequest.ExamRowRequest(
                                 LocalDate.of(2026, 7, 15),
                                 null,
                                 "CSE 1101",
                                 "Structured Programming",
-                                "Academic Building 202"
+                                null
                         )
                 )
         );
@@ -137,12 +147,14 @@ class TermHubAndCrossDeptIT {
                 "2025-2026",
                 LocalTime.of(9, 30),
                 LocalTime.of(12, 30),
+                null,
+                List.of(new RoomAllocationDto(1, 60, "EEE-101")),
                 List.of(new UpsertTermFinalScheduleRequest.ExamRowRequest(
                         LocalDate.of(2026, 7, 14),
                         eeeCourseId,
                         null,
                         null,
-                        "EEE Building 101"
+                        null
                 ))
         );
         mockMvc.perform(post("/api/v1/term-finals")
@@ -151,7 +163,7 @@ class TermHubAndCrossDeptIT {
                         .content(objectMapper.writeValueAsString(eeeScheduleReq)))
                 .andExpect(status().isForbidden());
 
-        // CSE CR creates Term Final schedule for own dept (CSE) with cross-dept course EEE 1107
+        // CSE CR creates Term Final schedule for own dept (CSE) with cross-dept course EEE 1107 and 3 central roll-range rooms
         MvcResult createdRes = mockMvc.perform(post("/api/v1/term-finals")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + crJwt)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -159,6 +171,13 @@ class TermHubAndCrossDeptIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.targetDepartment").value("CSE"))
                 .andExpect(jsonPath("$.data.yearTerm").value("1-1"))
+                .andExpect(jsonPath("$.data.examRoom").value(expectedRoomSummary))
+                .andExpect(jsonPath("$.data.roomAllocations.length()").value(3))
+                .andExpect(jsonPath("$.data.roomAllocations[0].rollStart").value(1))
+                .andExpect(jsonPath("$.data.roomAllocations[0].rollEnd").value(40))
+                .andExpect(jsonPath("$.data.roomAllocations[0].room").value("CSE-101"))
+                .andExpect(jsonPath("$.data.roomAllocations[1].room").value("CSE-105"))
+                .andExpect(jsonPath("$.data.roomAllocations[2].room").value("CSE-102"))
                 .andExpect(jsonPath("$.data.entries.length()").value(2))
                 .andExpect(jsonPath("$.data.entries[0].dayOfWeek").value("Sunday"))
                 .andExpect(jsonPath("$.data.entries[0].courseCode").value(eeeCourseCode))
@@ -176,12 +195,13 @@ class TermHubAndCrossDeptIT {
                         .content(objectMapper.writeValueAsString(eeeScheduleReq)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.targetDepartment").value("EEE"))
+                .andExpect(jsonPath("$.data.examRoom").value("EEE-101 (1-60)"))
                 .andExpect(jsonPath("$.data.entries[0].dayOfWeek").value("Tuesday"))
                 .andReturn();
         long eeeScheduleId = objectMapper.readTree(adminCreated.getResponse().getContentAsString())
                 .path("data").path("id").asLong();
 
-        // Calendar API /api/v1/calendar/events returns TERM_FINAL entries synced from Term Hub
+        // Calendar API /api/v1/calendar/events returns TERM_FINAL entries synced from Term Hub with central room arrangement
         mockMvc.perform(get("/api/v1/calendar/events")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentJwt)
                         .param("types", "TERM_FINAL")
@@ -193,6 +213,7 @@ class TermHubAndCrossDeptIT {
                 .andExpect(jsonPath("$.data[*].type", hasItem("TERM_FINAL")))
                 .andExpect(jsonPath("$.data[*].courseCode", hasItem(eeeCourseCode)))
                 .andExpect(jsonPath("$.data[*].department", hasItem("CSE")))
+                .andExpect(jsonPath("$.data[*].room", hasItem(expectedRoomSummary)))
                 .andExpect(jsonPath("$.data[*].hubPath", hasItem("/term-hub")));
 
         // CR can update own dept schedule, and Admin can delete EEE schedule

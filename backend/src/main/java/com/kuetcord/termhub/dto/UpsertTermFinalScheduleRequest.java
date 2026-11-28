@@ -1,5 +1,6 @@
 package com.kuetcord.termhub.dto;
 
+import com.kuetcord.cthub.dto.RoomAllocationDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -36,6 +37,12 @@ public record UpsertTermFinalScheduleRequest(
 
         @NotNull(message = "Exam end time is required")
         LocalTime examEndTime,
+
+        @Size(max = 255)
+        String examRoom,
+
+        @Size(max = 20)
+        List<@Valid RoomAllocationDto> roomAllocations,
 
         @NotEmpty(message = "At least one exam date row is required")
         @Size(max = 30)

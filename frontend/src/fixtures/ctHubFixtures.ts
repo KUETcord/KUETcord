@@ -352,6 +352,12 @@ export const DEMO_TERM_FINAL_SCHEDULES: TermFinalSchedule[] = [
     session: '2025-2026',
     examStartTime: '09:30:00',
     examEndTime: '12:30:00',
+    examRoom: 'CSE-101 (1-40), CSE-105 (41-80), CSE-102 (81-121)',
+    roomAllocations: [
+      { rollStart: 1, rollEnd: 40, room: 'CSE-101' },
+      { rollStart: 41, rollEnd: 80, room: 'CSE-105' },
+      { rollStart: 81, rollEnd: 121, room: 'CSE-102' },
+    ],
     createdById: 2,
     createdByName: 'Karim Rahman',
     entries: [
@@ -363,7 +369,7 @@ export const DEMO_TERM_FINAL_SCHEDULES: TermFinalSchedule[] = [
         courseCode: 'CSE 3201',
         courseTitle: 'Software Engineering & Design Patterns',
         courseDepartment: 'CSE',
-        examRoom: 'Academic Building 201',
+        examRoom: null,
       },
       {
         id: 2,
@@ -373,7 +379,7 @@ export const DEMO_TERM_FINAL_SCHEDULES: TermFinalSchedule[] = [
         courseCode: 'EEE 3110',
         courseTitle: 'Digital Signal Processing Fundamentals',
         courseDepartment: 'EEE',
-        examRoom: 'Academic Building 204',
+        examRoom: null,
       },
     ],
     createdAt: '2026-11-20T09:00:00Z',

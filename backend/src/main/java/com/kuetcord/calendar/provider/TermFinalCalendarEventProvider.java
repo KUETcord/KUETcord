@@ -4,6 +4,7 @@ import com.kuetcord.calendar.dto.CalendarEventDto;
 import com.kuetcord.calendar.model.CalendarEventType;
 import com.kuetcord.calendar.spi.CalendarEventProvider;
 import com.kuetcord.common.academic.YearTerm;
+import com.kuetcord.cthub.dto.RoomAllocationDto;
 import com.kuetcord.termhub.model.TermFinalEntry;
 import com.kuetcord.termhub.model.TermFinalSchedule;
 import com.kuetcord.termhub.repository.TermFinalEntryRepository;
@@ -69,6 +70,10 @@ public class TermFinalCalendarEventProvider implements CalendarEventProvider {
                             entry.getExamDate(), schedule.getExamEndTime(), DHAKA_ZONE).toInstant();
                     int durationMinutes = (int) Math.max(
                             0, Duration.between(schedule.getExamStartTime(), schedule.getExamEndTime()).toMinutes());
+                    String centralRoom = normalizeBlank(schedule.getExamRoom());
+                    if (centralRoom == null) {
+                        centralRoom = RoomAllocationDto.summarize(schedule.getRoomAllocations());
+                    }
 
                     return new CalendarEventDto(
                             "term-final:" + entry.getId(),
@@ -84,7 +89,7 @@ public class TermFinalCalendarEventProvider implements CalendarEventProvider {
                             startsAt,
                             endsAt,
                             durationMinutes,
-                            entry.getExamRoom(),
+                            centralRoom,
                             "SCHEDULED",
                             null,
                             null,

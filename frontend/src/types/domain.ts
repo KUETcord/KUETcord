@@ -136,6 +136,8 @@ export interface TermFinalSchedule {
   session: string;
   examStartTime: string;
   examEndTime: string;
+  examRoom?: string | null;
+  roomAllocations: RoomAllocation[];
   createdById: number;
   createdByName: string;
   entries: TermFinalEntry[];
@@ -159,6 +161,8 @@ export interface UpsertTermFinalSchedulePayload {
   session: string;
   examStartTime: string;
   examEndTime: string;
+  examRoom?: string | null;
+  roomAllocations?: RoomAllocation[];
   entries: UpsertTermFinalEntryPayload[];
 }
 
