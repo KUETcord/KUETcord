@@ -40,7 +40,13 @@ public record CreateCtEventRequest(
         String targetBatch,
 
         @Size(max = 20, message = "At most 20 room allocations are allowed per CT")
-        List<@Valid RoomAllocationDto> roomAllocations
+        List<@Valid RoomAllocationDto> roomAllocations,
+
+        @Size(max = 16, message = "Target department must not exceed 16 characters")
+        String targetDepartment,
+
+        @Size(max = 10, message = "Target year-term must not exceed 10 characters")
+        String targetYearTerm
 ) {
     /** Backward-compatible 6-arg constructor for existing test suites. */
     public CreateCtEventRequest(
@@ -50,7 +56,7 @@ public record CreateCtEventRequest(
             Instant scheduledAt,
             Integer durationMinutes,
             String coveredTopics) {
-        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, null, null, null);
+        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, null, null, null, null, null);
     }
 
     /** Backward-compatible 8-arg constructor. */
@@ -63,6 +69,22 @@ public record CreateCtEventRequest(
             String coveredTopics,
             String examRoom,
             String targetBatch) {
-        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, examRoom, targetBatch, null);
+        this(courseOfferingId, teacherId, null, title, scheduledAt, durationMinutes, coveredTopics, examRoom, targetBatch, null, null, null);
+    }
+
+    /** Backward-compatible 10-arg constructor. */
+    public CreateCtEventRequest(
+            Long courseOfferingId,
+            Long teacherId,
+            Long coTeacherId,
+            String title,
+            Instant scheduledAt,
+            Integer durationMinutes,
+            String coveredTopics,
+            String examRoom,
+            String targetBatch,
+            List<RoomAllocationDto> roomAllocations) {
+        this(courseOfferingId, teacherId, coTeacherId, title, scheduledAt, durationMinutes, coveredTopics,
+                examRoom, targetBatch, roomAllocations, null, null);
     }
 }

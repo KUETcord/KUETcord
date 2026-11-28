@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Briefcase,
   Calendar,
+  CalendarCheck2,
   CalendarDays,
   ClipboardList,
   FolderGit2,
@@ -34,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/ct-hub', label: 'CT Hub', icon: Calendar },
+  { to: '/term-hub', label: 'Term Hub', icon: CalendarCheck2 },
   { to: '/assignments', label: 'Assignment Hub', icon: ClipboardList },
   { to: '/presentations', label: 'Presentation Hub', icon: Presentation },
   { to: '/course-projects', label: 'Project Hub', icon: FolderGit2 },
@@ -49,6 +51,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/': 'Overview',
   '/calendar': 'Academic Calendar',
   '/ct-hub': 'CT Hub',
+  '/term-hub': 'Term Hub',
   '/assignments': 'Assignment Hub',
   '/presentations': 'Presentation Hub',
   '/course-projects': 'Project Hub',

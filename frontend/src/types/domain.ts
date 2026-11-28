@@ -74,6 +74,8 @@ export interface CtEventSummary {
   courseTitle: string;
   courseDepartment?: string | null;
   courseYearTerm?: string | null;
+  targetDepartment?: string | null;
+  targetYearTerm?: string | null;
   title: string;
   scheduledAt: string;
   durationMinutes: number;
@@ -112,7 +114,53 @@ export interface CtEventDetail {
   history: CtEventHistory[];
 }
 
-export type CalendarEventType = 'CT' | 'ASSIGNMENT' | 'PRESENTATION' | 'PROJECT';
+export type CalendarEventType = 'CT' | 'ASSIGNMENT' | 'PRESENTATION' | 'PROJECT' | 'TERM_FINAL';
+
+export interface TermFinalEntry {
+  id: number;
+  examDate: string;
+  dayOfWeek: string;
+  courseOfferingId: number | null;
+  courseCode: string;
+  courseTitle: string;
+  courseDepartment: string | null;
+  examRoom: string | null;
+}
+
+export interface TermFinalSchedule {
+  id: number;
+  title: string;
+  targetDepartment: string;
+  yearTerm: string;
+  batch: string;
+  session: string;
+  examStartTime: string;
+  examEndTime: string;
+  createdById: number;
+  createdByName: string;
+  entries: TermFinalEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertTermFinalEntryPayload {
+  examDate: string;
+  courseOfferingId?: number | null;
+  courseCode?: string;
+  courseTitle?: string;
+  examRoom?: string;
+}
+
+export interface UpsertTermFinalSchedulePayload {
+  title: string;
+  targetDepartment: string;
+  yearTerm: string;
+  batch: string;
+  session: string;
+  examStartTime: string;
+  examEndTime: string;
+  entries: UpsertTermFinalEntryPayload[];
+}
 
 export interface CalendarEvent {
   id: string;

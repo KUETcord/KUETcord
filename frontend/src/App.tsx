@@ -18,6 +18,7 @@ import { PlaygroundsPage } from './pages/PlaygroundsPage';
 import { PlaygroundWorkspacePage } from './pages/PlaygroundWorkspacePage';
 import { StudyCircleDetailPage } from './pages/StudyCircleDetailPage';
 import { StudyCirclesPage } from './pages/StudyCirclesPage';
+import { TermHubPage } from './pages/TermHubPage';
 
 export function AppRoutes() {
   return (
@@ -26,6 +27,7 @@ export function AppRoutes() {
         <Route path="/" element={<OverviewPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/ct-hub" element={<CtHubPage />} />
+        <Route path="/term-hub" element={<TermHubPage />} />
         <Route
           path="/assignments"
           element={

@@ -106,11 +106,21 @@ export function CtEventCard({
             <span className="rounded-md bg-slate-800 px-2 py-0.5 font-mono text-xs font-semibold tracking-tight text-emerald-300">
               {event.courseCode}
             </span>
-            {event.courseYearTerm && (
+            {(event.targetYearTerm ?? event.courseYearTerm) && (
               <span className="rounded-md border border-slate-800 bg-slate-950/60 px-2 py-0.5 font-mono text-[11px] text-sky-300 tabular-nums">
-                {event.courseYearTerm}
+                {event.targetYearTerm ?? event.courseYearTerm}
               </span>
             )}
+            {event.courseDepartment &&
+              event.targetDepartment &&
+              event.courseDepartment.toUpperCase() !== event.targetDepartment.toUpperCase() && (
+                <span
+                  className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-amber-200"
+                  title={`Cross-department course offered by ${event.courseDepartment} for ${event.targetDepartment} students`}
+                >
+                  Cross-Dept · {event.courseDepartment} → {event.targetDepartment}
+                </span>
+              )}
             <CtStatusBadge status={event.status} />
             <span
               className="rounded-md border border-slate-800 bg-slate-950/60 px-2 py-0.5 font-mono text-[11px] text-slate-400 tabular-nums"

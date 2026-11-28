@@ -1,4 +1,10 @@
-import type { CourseOffering, CtEventSummary, TeacherSummary, UserSummary } from '../types/domain';
+import type {
+  CourseOffering,
+  CtEventSummary,
+  TeacherSummary,
+  TermFinalSchedule,
+  UserSummary,
+} from '../types/domain';
 
 export type DataFixtureMode = 'demo' | 'worst' | 'empty' | 'one';
 
@@ -161,6 +167,8 @@ export const DEMO_CT_EVENTS: CtEventSummary[] = [
     courseTitle: 'Software Engineering & Design Patterns',
     courseDepartment: 'CSE',
     courseYearTerm: '3-2',
+    targetDepartment: 'CSE',
+    targetYearTerm: '3-2',
     title: 'CT 2: State Pattern, Optimistic Locking & Outbox',
     scheduledAt: '2026-11-27T04:00:00Z',
     durationMinutes: 45,
@@ -192,6 +200,8 @@ export const DEMO_CT_EVENTS: CtEventSummary[] = [
     courseTitle: 'Algorithms & Graph Theory',
     courseDepartment: 'CSE',
     courseYearTerm: '3-2',
+    targetDepartment: 'CSE',
+    targetYearTerm: '3-2',
     title: 'CT 3: Shortest Paths & Minimum Spanning Trees',
     scheduledAt: '2026-11-29T05:30:00Z',
     durationMinutes: 40,
@@ -216,6 +226,8 @@ export const DEMO_CT_EVENTS: CtEventSummary[] = [
     courseTitle: 'Digital Signal Processing Fundamentals',
     courseDepartment: 'EEE',
     courseYearTerm: '3-1',
+    targetDepartment: 'CSE',
+    targetYearTerm: '3-1',
     title: 'CT 1: Discrete-Time Fourier Transform & Z-Transform',
     scheduledAt: '2026-12-06T04:30:00Z',
     durationMinutes: 50,
@@ -327,5 +339,44 @@ export const WORST_CASE_CT_EVENTS: CtEventSummary[] = [
     version: 3,
     createdAt: '2026-11-02T09:00:00Z',
     updatedAt: '2026-11-09T11:00:00Z',
+  },
+];
+
+export const DEMO_TERM_FINAL_SCHEDULES: TermFinalSchedule[] = [
+  {
+    id: 901,
+    title: 'B.Sc. Engineering 3rd Year 2nd Term Final Examination 2026',
+    targetDepartment: 'CSE',
+    yearTerm: '3-2',
+    batch: '2k20',
+    session: '2025-2026',
+    examStartTime: '09:30:00',
+    examEndTime: '12:30:00',
+    createdById: 2,
+    createdByName: 'Karim Rahman',
+    entries: [
+      {
+        id: 1,
+        examDate: '2026-12-13',
+        dayOfWeek: 'Sunday',
+        courseOfferingId: 101,
+        courseCode: 'CSE 3201',
+        courseTitle: 'Software Engineering & Design Patterns',
+        courseDepartment: 'CSE',
+        examRoom: 'Academic Building 201',
+      },
+      {
+        id: 2,
+        examDate: '2026-12-16',
+        dayOfWeek: 'Wednesday',
+        courseOfferingId: 103,
+        courseCode: 'EEE 3110',
+        courseTitle: 'Digital Signal Processing Fundamentals',
+        courseDepartment: 'EEE',
+        examRoom: 'Academic Building 204',
+      },
+    ],
+    createdAt: '2026-11-20T09:00:00Z',
+    updatedAt: '2026-11-20T09:00:00Z',
   },
 ];

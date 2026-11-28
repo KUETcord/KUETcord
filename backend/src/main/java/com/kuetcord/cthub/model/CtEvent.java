@@ -67,6 +67,12 @@ public class CtEvent {
     @Column(name = "room_allocations", columnDefinition = "jsonb", nullable = false)
     private List<RoomAllocationDto> roomAllocations = new ArrayList<>();
 
+    @Column(name = "target_department", nullable = false, length = 16)
+    private String targetDepartment;
+
+    @Column(name = "target_year_term", length = 10)
+    private String targetYearTerm;
+
     @Column(name = "target_batch", length = 20)
     private String targetBatch;
 
@@ -122,6 +128,12 @@ public class CtEvent {
         if (this.roomAllocations == null) {
             this.roomAllocations = new ArrayList<>();
         }
+        if ((this.targetDepartment == null || this.targetDepartment.isBlank()) && this.courseOffering != null) {
+            this.targetDepartment = this.courseOffering.getDepartment();
+        }
+        if ((this.targetYearTerm == null || this.targetYearTerm.isBlank()) && this.courseOffering != null) {
+            this.targetYearTerm = this.courseOffering.getYearTerm();
+        }
     }
 
     @PreUpdate
@@ -129,6 +141,12 @@ public class CtEvent {
         this.updatedAt = Instant.now();
         if (this.roomAllocations == null) {
             this.roomAllocations = new ArrayList<>();
+        }
+        if ((this.targetDepartment == null || this.targetDepartment.isBlank()) && this.courseOffering != null) {
+            this.targetDepartment = this.courseOffering.getDepartment();
+        }
+        if ((this.targetYearTerm == null || this.targetYearTerm.isBlank()) && this.courseOffering != null) {
+            this.targetYearTerm = this.courseOffering.getYearTerm();
         }
     }
 }

@@ -5,6 +5,7 @@ package com.kuetcord.calendar.model;
  */
 public enum CalendarEventType {
     CT,
+    TERM_FINAL,
     ASSIGNMENT,
     PRESENTATION,
     PROJECT

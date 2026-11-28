@@ -10,6 +10,8 @@ import type {
   RoleName,
   RoomAllocation,
   TeacherSummary,
+  TermFinalSchedule,
+  UpsertTermFinalSchedulePayload,
   UserStatus,
   UserSummary,
 } from '../types/domain';
@@ -233,6 +235,8 @@ export const ctHubApi = {
     examRoom?: string;
     roomAllocations?: RoomAllocation[];
     targetBatch?: string;
+    targetDepartment?: string;
+    targetYearTerm?: string;
   }): Promise<CtEventSummary> {
     return request<CtEventSummary>('/ct/events', {
       method: 'POST',
@@ -418,5 +422,42 @@ export const calendarApi = {
     if (params?.batch) qs.set('batch', params.batch);
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
     return request<CalendarEvent[]>(`/calendar/events${suffix}`);
+  },
+};
+
+export const termFinalApi = {
+  list(params?: {
+    department?: string;
+    yearTerm?: string;
+    batch?: string;
+    session?: string;
+  }): Promise<TermFinalSchedule[]> {
+    const qs = new URLSearchParams();
+    if (params?.department) qs.set('department', params.department);
+    if (params?.yearTerm) qs.set('yearTerm', params.yearTerm);
+    if (params?.batch) qs.set('batch', params.batch);
+    if (params?.session) qs.set('session', params.session);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<TermFinalSchedule[]>(`/term-finals${suffix}`);
+  },
+
+  create(payload: UpsertTermFinalSchedulePayload): Promise<TermFinalSchedule> {
+    return request<TermFinalSchedule>('/term-finals', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  update(scheduleId: number, payload: UpsertTermFinalSchedulePayload): Promise<TermFinalSchedule> {
+    return request<TermFinalSchedule>(`/term-finals/${scheduleId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  remove(scheduleId: number): Promise<void> {
+    return request<void>(`/term-finals/${scheduleId}`, {
+      method: 'DELETE',
+    });
   },
 };

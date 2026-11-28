@@ -24,7 +24,7 @@ import {
 } from '../fixtures/ctHubFixtures';
 import { ApiError, ctHubApi } from '../lib/api';
 import { cn, pluralize } from '../lib/format';
-import { resolveYearTerm, YEAR_TERM_OPTIONS } from '../lib/yearTerm';
+import { KUET_DEPARTMENTS, resolveYearTerm, YEAR_TERM_OPTIONS } from '../lib/yearTerm';
 import type { CourseOffering, CtEventSummary, CtStatus, RoomAllocation } from '../types/domain';
 
 const STATUS_OPTIONS: Array<{ value: '' | CtStatus; label: string }> = [
@@ -50,7 +50,7 @@ export function CtHubPage() {
   // Filters — "My Batch (e.g. 3-2 · CSE)" is active by default when student/CR has yearTerm set
   const hasStudentBatchScope = Boolean(user?.yearTerm);
   const [myBatchOnly, setMyBatchOnly] = useState<boolean>(hasStudentBatchScope);
-  const [departmentFilter, setDepartmentFilter] = useState<string>('');
+  const [departmentFilter, setDepartmentFilter] = useState<string>(user?.department ?? '');
   const [yearTermFilter, setYearTermFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'' | CtStatus>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -58,7 +58,10 @@ export function CtHubPage() {
 
   useEffect(() => {
     setMyBatchOnly(Boolean(user?.yearTerm));
-  }, [user?.id, user?.yearTerm]);
+    if (user?.department) {
+      setDepartmentFilter(user.department);
+    }
+  }, [user?.id, user?.yearTerm, user?.department]);
 
   // Modals & action state
   const [proposeOpen, setProposeOpen] = useState(false);
@@ -104,7 +107,7 @@ export function CtHubPage() {
   }, [loadData]);
 
   const departments = useMemo(() => {
-    return Array.from(new Set(courses.map((c) => c.department))).sort();
+    return Array.from(new Set([...KUET_DEPARTMENTS, ...courses.map((c) => c.department)])).sort();
   }, [courses]);
 
   const effectiveDepartment = myBatchOnly && user?.department ? user.department : departmentFilter;
@@ -132,9 +135,9 @@ export function CtHubPage() {
       if (statusFilter && ev.status !== statusFilter) return false;
 
       const matchCourse = courses.find((c) => c.id === ev.courseOfferingId);
-      const evDept = ev.courseDepartment ?? matchCourse?.department ?? null;
+      const evDept = ev.targetDepartment ?? ev.courseDepartment ?? matchCourse?.department ?? null;
       const evYt = resolveYearTerm(
-        ev.courseYearTerm ?? matchCourse?.yearTerm,
+        ev.targetYearTerm ?? ev.courseYearTerm ?? matchCourse?.yearTerm,
         matchCourse?.semester,
       );
 
@@ -206,6 +209,8 @@ export function CtHubPage() {
     durationMinutes: number;
     roomAllocations?: RoomAllocation[];
     coveredTopics?: string;
+    targetDepartment?: string;
+    targetYearTerm?: string;
   }) => {
     const teacherDisplay = payload.coTeacherName
       ? `${payload.teacherName} & ${payload.coTeacherName}`
@@ -229,6 +234,8 @@ export function CtHubPage() {
         courseTitle: course.courseTitle,
         courseDepartment: course.department,
         courseYearTerm: resolveYearTerm(course.yearTerm, course.semester),
+        targetDepartment: payload.targetDepartment ?? user?.department ?? course.department,
+        targetYearTerm: payload.targetYearTerm ?? resolveYearTerm(course.yearTerm, course.semester),
         title: payload.title,
         scheduledAt: payload.scheduledAt,
         durationMinutes: payload.durationMinutes,
@@ -262,6 +269,8 @@ export function CtHubPage() {
       durationMinutes: payload.durationMinutes,
       roomAllocations: payload.roomAllocations,
       coveredTopics: payload.coveredTopics,
+      targetDepartment: payload.targetDepartment,
+      targetYearTerm: payload.targetYearTerm,
     });
     setEvents((prev) => [created, ...prev]);
     toast.success(`CT proposed and ${teacherDisplay} notified for approval`);
@@ -451,7 +460,11 @@ export function CtHubPage() {
           <button
             type="button"
             aria-pressed={!myBatchOnly}
-            onClick={() => setMyBatchOnly(false)}
+            onClick={() => {
+              setMyBatchOnly(false);
+              setDepartmentFilter('');
+              setYearTermFilter('');
+            }}
             className={cn(
               'rounded-full border px-3 py-1 text-xs font-medium transition-[background-color,border-color,transform] duration-100 ease-out active:scale-[0.97]',
               !myBatchOnly
@@ -679,6 +692,12 @@ export function CtHubPage() {
         onOpenChange={setProposeOpen}
         courses={courses}
         defaultYearTerm={user?.yearTerm ?? null}
+        defaultDepartment={user?.department ?? null}
+        isCrOnly={
+          user?.globalRole === 'CR' &&
+          !user.roles.includes('ROLE_ADMIN') &&
+          !user.roles.includes('ROLE_MODERATOR')
+        }
         demoTeachers={demoTeachers}
         isDemoMode={isDemoMode}
         onSubmit={handleCreateEvent}

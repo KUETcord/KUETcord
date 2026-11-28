@@ -51,9 +51,21 @@ const EVENT_TYPE_META: Record<
     pill: 'border-amber-500/40 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25',
     badge: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
   },
+  TERM_FINAL: {
+    label: 'Term Finals',
+    dot: 'bg-rose-400',
+    pill: 'border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25',
+    badge: 'border-rose-500/40 bg-rose-500/15 text-rose-300',
+  },
 };
 
-const ALL_TYPES: CalendarEventType[] = ['CT', 'ASSIGNMENT', 'PRESENTATION', 'PROJECT'];
+const ALL_TYPES: CalendarEventType[] = [
+  'CT',
+  'ASSIGNMENT',
+  'PRESENTATION',
+  'PROJECT',
+  'TERM_FINAL',
+];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function dateKey(date: Date): string {
@@ -107,11 +119,12 @@ export function CalendarPage() {
     ASSIGNMENT: true,
     PRESENTATION: true,
     PROJECT: true,
+    TERM_FINAL: true,
   });
 
   // Batch (Year-Term) filter — active by default when student/CR has yearTerm set
   const [myBatchOnly, setMyBatchOnly] = useState<boolean>(Boolean(user?.yearTerm));
-  const [departmentFilter, setDepartmentFilter] = useState<string>('');
+  const [departmentFilter, setDepartmentFilter] = useState<string>(user?.department ?? '');
   const [yearTermFilter, setYearTermFilter] = useState<string>('');
 
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -119,7 +132,10 @@ export function CalendarPage() {
 
   useEffect(() => {
     setMyBatchOnly(Boolean(user?.yearTerm));
-  }, [user?.id, user?.yearTerm]);
+    if (user?.department) {
+      setDepartmentFilter(user.department);
+    }
+  }, [user?.id, user?.yearTerm, user?.department]);
 
   const effectiveDepartment = myBatchOnly && user?.department ? user.department : departmentFilter;
   const effectiveYearTerm = myBatchOnly && user?.yearTerm ? user.yearTerm : yearTermFilter;
@@ -182,6 +198,7 @@ export function CalendarPage() {
       ASSIGNMENT: 0,
       PRESENTATION: 0,
       PROJECT: 0,
+      TERM_FINAL: 0,
     };
     for (const ev of events) {
       if (effectiveDepartment && ev.department && ev.department !== effectiveDepartment) continue;
@@ -322,7 +339,11 @@ export function CalendarPage() {
                 <button
                   type="button"
                   aria-pressed={!myBatchOnly}
-                  onClick={() => setMyBatchOnly(false)}
+                  onClick={() => {
+                    setMyBatchOnly(false);
+                    setDepartmentFilter('');
+                    setYearTermFilter('');
+                  }}
                   className={cn(
                     'rounded-full border px-2.5 py-1 text-xs font-medium active:scale-[0.97]',
                     !myBatchOnly

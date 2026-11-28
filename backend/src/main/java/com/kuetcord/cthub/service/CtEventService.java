@@ -93,11 +93,17 @@ public class CtEventService {
             }
             if (department != null && !department.isBlank()) {
                 predicates.add(cb.equal(
-                        cb.lower(root.get("courseOffering").get("department")),
+                        cb.lower(root.get("targetDepartment")),
                         department.trim().toLowerCase(Locale.ROOT)));
             }
             if (normalizedYearTerm != null) {
-                predicates.add(cb.equal(root.get("courseOffering").get("yearTerm"), normalizedYearTerm));
+                predicates.add(cb.or(
+                        cb.equal(root.get("targetYearTerm"), normalizedYearTerm),
+                        cb.and(
+                                cb.isNull(root.get("targetYearTerm")),
+                                cb.equal(root.get("courseOffering").get("yearTerm"), normalizedYearTerm)
+                        )
+                ));
             }
             if (batch != null && !batch.isBlank()) {
                 String normalizedBatch = batch.trim().toLowerCase(Locale.ROOT);
@@ -148,6 +154,22 @@ public class CtEventService {
         String summaryRoom = RoomAllocationDto.summarize(sanitizedAllocations);
         String examRoom = summaryRoom != null ? summaryRoom : trimNullable(request.examRoom());
         String targetBatch = trimNullable(request.targetBatch());
+        String requestedDept = trimNullable(request.targetDepartment());
+        String targetDepartment = requestedDept != null
+                ? requestedDept.toUpperCase(Locale.ROOT)
+                : (isCrOnly(submitter) && submitter.getDepartment() != null && !submitter.getDepartment().isBlank()
+                        ? submitter.getDepartment().trim().toUpperCase(Locale.ROOT)
+                        : course.getDepartment().trim().toUpperCase(Locale.ROOT));
+
+        if (isCrOnly(submitter) && submitter.getDepartment() != null && !submitter.getDepartment().isBlank()
+                && !targetDepartment.equalsIgnoreCase(submitter.getDepartment().trim())) {
+            throw new ForbiddenException("CRs can only propose CTs for their own department (" + submitter.getDepartment() + ")");
+        }
+
+        String requestedYearTerm = trimNullable(request.targetYearTerm());
+        String targetYearTerm = requestedYearTerm != null
+                ? YearTerm.normalizeNullable(requestedYearTerm)
+                : course.getYearTerm();
 
         CtEvent event = CtEvent.builder()
                 .courseOffering(course)
@@ -156,6 +178,8 @@ public class CtEventService {
                 .durationMinutes(request.durationMinutes() != null ? request.durationMinutes() : 45)
                 .examRoom(examRoom)
                 .roomAllocations(sanitizedAllocations)
+                .targetDepartment(targetDepartment)
+                .targetYearTerm(targetYearTerm)
                 .targetBatch(targetBatch != null ? targetBatch : course.getTargetBatch())
                 .coveredTopics(request.coveredTopics() != null ? request.coveredTopics().trim() : null)
                 .status(CtStatus.UNVERIFIED)
@@ -438,6 +462,13 @@ public class CtEventService {
 
     private static boolean hasRole(User user, RoleName roleName) {
         return user.getRoles().stream().anyMatch(role -> role.getName() == roleName);
+    }
+
+    private static boolean isCrOnly(User user) {
+        return hasRole(user, RoleName.ROLE_CR)
+                && !hasRole(user, RoleName.ROLE_ADMIN)
+                && !hasRole(user, RoleName.ROLE_MODERATOR)
+                && !hasRole(user, RoleName.ROLE_TEACHER);
     }
 
     private CtEvent requireEventWithDetails(Long ctEventId) {

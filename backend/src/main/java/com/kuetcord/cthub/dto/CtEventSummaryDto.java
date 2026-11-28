@@ -13,6 +13,8 @@ public record CtEventSummaryDto(
         String courseTitle,
         String courseDepartment,
         String courseYearTerm,
+        String targetDepartment,
+        String targetYearTerm,
         String title,
         Instant scheduledAt,
         int durationMinutes,
@@ -53,7 +55,7 @@ public record CtEventSummaryDto(
             Long version,
             Instant createdAt,
             Instant updatedAt) {
-        this(id, courseOfferingId, courseCode, courseTitle, null, null, title, scheduledAt, durationMinutes,
+        this(id, courseOfferingId, courseCode, courseTitle, null, null, null, null, title, scheduledAt, durationMinutes,
                 null, List.of(), null, coveredTopics, status, submittedById, submittedByName,
                 assignedTeacherId, assignedTeacherName, null, null,
                 verifiedById, verifiedByName, version, createdAt, updatedAt);
@@ -83,7 +85,8 @@ public record CtEventSummaryDto(
             Long version,
             Instant createdAt,
             Instant updatedAt) {
-        this(id, courseOfferingId, courseCode, courseTitle, courseDepartment, courseYearTerm, title,
+        this(id, courseOfferingId, courseCode, courseTitle, courseDepartment, courseYearTerm,
+                courseDepartment, courseYearTerm, title,
                 scheduledAt, durationMinutes, examRoom, List.of(), targetBatch, coveredTopics, status,
                 submittedById, submittedByName, assignedTeacherId, assignedTeacherName, null, null,
                 verifiedById, verifiedByName, version, createdAt, updatedAt);
@@ -96,6 +99,12 @@ public record CtEventSummaryDto(
         String effectiveRoom = (event.getExamRoom() != null && !event.getExamRoom().isBlank())
                 ? event.getExamRoom()
                 : RoomAllocationDto.summarize(allocations);
+        String effectiveDept = (event.getTargetDepartment() != null && !event.getTargetDepartment().isBlank())
+                ? event.getTargetDepartment()
+                : event.getCourseOffering().getDepartment();
+        String effectiveYearTerm = (event.getTargetYearTerm() != null && !event.getTargetYearTerm().isBlank())
+                ? event.getTargetYearTerm()
+                : event.getCourseOffering().getYearTerm();
 
         return new CtEventSummaryDto(
                 event.getId(),
@@ -104,6 +113,8 @@ public record CtEventSummaryDto(
                 event.getCourseOffering().getCourseTitle(),
                 event.getCourseOffering().getDepartment(),
                 event.getCourseOffering().getYearTerm(),
+                effectiveDept,
+                effectiveYearTerm,
                 event.getTitle(),
                 event.getScheduledAt(),
                 event.getDurationMinutes(),

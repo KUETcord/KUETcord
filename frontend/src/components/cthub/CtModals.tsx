@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { ctHubApi } from '../../lib/api';
 import { getInitials } from '../../lib/format';
-import { resolveYearTerm, YEAR_TERM_OPTIONS } from '../../lib/yearTerm';
+import { KUET_DEPARTMENTS, resolveYearTerm, YEAR_TERM_OPTIONS } from '../../lib/yearTerm';
 import type {
   CourseOffering,
   CtEventSummary,
@@ -184,6 +184,8 @@ interface ProposeCtModalProps {
   onOpenChange: (open: boolean) => void;
   courses: CourseOffering[];
   defaultYearTerm?: string | null;
+  defaultDepartment?: string | null;
+  isCrOnly?: boolean;
   demoTeachers: TeacherSummary[];
   isDemoMode: boolean;
   onSubmit: (payload: {
@@ -197,6 +199,8 @@ interface ProposeCtModalProps {
     durationMinutes: number;
     roomAllocations?: RoomAllocation[];
     coveredTopics?: string;
+    targetDepartment?: string;
+    targetYearTerm?: string;
   }) => Promise<void>;
 }
 
@@ -205,10 +209,13 @@ export function ProposeCtModal({
   onOpenChange,
   courses,
   defaultYearTerm,
+  defaultDepartment,
+  isCrOnly = false,
   demoTeachers,
   isDemoMode,
   onSubmit,
 }: ProposeCtModalProps) {
+  const [targetDepartment, setTargetDepartment] = useState<string>(defaultDepartment ?? 'CSE');
   const [postingYearTerm, setPostingYearTerm] = useState<string>(defaultYearTerm ?? '');
   const [courseOfferingId, setCourseOfferingId] = useState<string>(
     courses[0] ? String(courses[0].id) : '',
@@ -227,6 +234,18 @@ export function ProposeCtModal({
   const [coveredTopics, setCoveredTopics] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (defaultDepartment) {
+      setTargetDepartment(defaultDepartment);
+    }
+  }, [open, defaultDepartment]);
+
+  const selectedCourse = useMemo(
+    () => courses.find((c) => String(c.id) === courseOfferingId) ?? null,
+    [courses, courseOfferingId],
+  );
 
   const selectableCourses = useMemo(() => {
     if (!postingYearTerm) return courses;
@@ -319,6 +338,8 @@ export function ProposeCtModal({
         durationMinutes: Number(durationMinutes) || 45,
         roomAllocations: allocations.length > 0 ? allocations : undefined,
         coveredTopics: coveredTopics.trim() || undefined,
+        targetDepartment: targetDepartment || undefined,
+        targetYearTerm: postingYearTerm || undefined,
       });
       setTitle('');
       setRoomRows([{ rollStart: '1', rollEnd: '40', room: '' }]);
@@ -347,10 +368,29 @@ export function ProposeCtModal({
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
-          <div className="sm:col-span-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="ct-target-dept" className="block text-xs font-medium text-slate-300">
+              Target Student Department
+            </label>
+            <select
+              id="ct-target-dept"
+              value={targetDepartment}
+              disabled={isCrOnly}
+              onChange={(e) => setTargetDepartment(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 disabled:opacity-60 focus:border-emerald-500 focus:outline-none"
+            >
+              {KUET_DEPARTMENTS.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label htmlFor="ct-post-year-term" className="block text-xs font-medium text-slate-300">
-              Year &amp; Term Filter
+              Target Year &amp; Term
             </label>
             <select
               id="ct-post-year-term"
@@ -366,25 +406,32 @@ export function ProposeCtModal({
               ))}
             </select>
           </div>
+        </div>
 
-          <div className="sm:col-span-3">
-            <label htmlFor="ct-course" className="block text-xs font-medium text-slate-300">
-              Course Offering
-            </label>
-            <select
-              id="ct-course"
-              value={courseOfferingId}
-              onChange={(e) => setCourseOfferingId(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-              required
-            >
-              {selectableCourses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.courseCode} ({resolveYearTerm(course.yearTerm, course.semester) ?? course.semester}) — {course.courseTitle}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <label htmlFor="ct-course" className="block text-xs font-medium text-slate-300">
+            Course Offering (All KUET Departments)
+          </label>
+          <select
+            id="ct-course"
+            value={courseOfferingId}
+            onChange={(e) => setCourseOfferingId(e.target.value)}
+            className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            required
+          >
+            {selectableCourses.map((course) => (
+              <option key={course.id} value={course.id}>
+                [{course.department}] {course.courseCode} ({resolveYearTerm(course.yearTerm, course.semester) ?? course.semester}) — {course.courseTitle}
+              </option>
+            ))}
+          </select>
+          {selectedCourse &&
+            targetDepartment &&
+            selectedCourse.department.toUpperCase() !== targetDepartment.toUpperCase() && (
+              <p className="mt-1 text-[11px] text-amber-300">
+                Cross-department course ({selectedCourse.department}) — will appear in {targetDepartment} CT Hub &amp; Calendar.
+              </p>
+            )}
         </div>
 
         {/* Searchable Combined Teacher Picker (1 or 2 teachers) */}
